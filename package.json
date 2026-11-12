@@ -4,7 +4,7 @@
   "description": "Command center for every fantasy league you play in. See DESIGN.md.",
   "packageManager": "pnpm@10.34.9",
   "engines": {
-    "node": ">=24 <25"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "turbo run dev --filter=@ffc/web",
