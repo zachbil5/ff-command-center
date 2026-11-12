@@ -22,6 +22,10 @@ function query(params: Record<string, string | number | undefined>): string {
 
 export const routes = {
   home: (error?: 'invalid_username') => `/${query({ error })}`,
+  signIn: (error?: string) => `/sign-in${query({ error })}`,
+  settings: (status?: SettingsStatus) => `/settings${query({ status })}`,
+  invites: (status?: string) => `/invites${query({ status })}`,
+  authApi: '/api/auth',
   sleeperSearch: '/sleeper',
   sleeperUser: (username: string, season?: number) =>
     `/sleeper/${encodeURIComponent(username)}${query({ season })}`,
@@ -37,6 +41,23 @@ export const routes = {
     return `/leagues/${path}${query({ me: options.me, week: options.week })}`;
   },
 } as const;
+
+/** Outcome codes the settings page shows after a form submit. */
+export type SettingsStatus = 'linked' | 'unlinked' | 'not_found' | 'unavailable' | 'invalid';
+
+/** Paths reachable without a session (DESIGN §6.1). Everything else redirects to sign-in. */
+export const PUBLIC_PATH_PREFIXES = [
+  '/sign-in',
+  '/api/auth',
+  '/api/health',
+  '/manifest.webmanifest',
+] as const;
+
+export function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 /** Optional `?week=` value valid for the sport; null means "the default week". */
 export function parseWeek(value: unknown, sport: Sport): number | null {

@@ -11,6 +11,7 @@ import { LeagueMatchups } from '@/components/league-matchups';
 import { LiveRefresh } from '@/components/live-refresh';
 import { Notice } from '@/components/notice';
 import { PageShell } from '@/components/page-shell';
+import { requireUser } from '@/features/auth';
 import { StandingsTable } from '@/components/standings-table';
 import { StatusBadge } from '@/components/status-badge';
 import { WeekNav } from '@/components/week-nav';
@@ -31,6 +32,7 @@ export default async function LeaguePage({
   params: Promise<{ provider: string; sport: string; season: string; leagueId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const user = await requireUser();
   const ref = parseLeagueParams(await params);
   if (ref === null) notFound();
   const query = await searchParams;
@@ -44,7 +46,7 @@ export default async function LeaguePage({
 
   if (standings.kind === 'unavailable') {
     return (
-      <PageShell>
+      <PageShell user={user}>
         <Notice
           title={`${PROVIDER_LABEL[ref.provider]} isn’t answering right now`}
           action={{
@@ -62,7 +64,7 @@ export default async function LeaguePage({
   const avatarSrc = (avatarId: string | null) => avatarUrl(ref.provider, avatarId);
 
   return (
-    <PageShell>
+    <PageShell user={user}>
       <header className="flex items-center gap-3">
         <Avatar src={avatarUrl(ref.provider, league.avatarId)} name={league.name} size="lg" />
         <div className="min-w-0">

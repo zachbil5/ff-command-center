@@ -6,8 +6,16 @@ export const ALLOWED_INTERNAL_DEPS: Readonly<Record<string, readonly string[]>> 
   '@ffc/analysis': ['@ffc/domain'],
   '@ffc/config': ['@ffc/domain'],
   '@ffc/providers': ['@ffc/domain', '@ffc/config'],
+  '@ffc/db': ['@ffc/domain', '@ffc/config'],
   '@ffc/ui': [],
-  '@ffc/web': ['@ffc/domain', '@ffc/analysis', '@ffc/config', '@ffc/providers', '@ffc/ui'],
+  '@ffc/web': [
+    '@ffc/domain',
+    '@ffc/analysis',
+    '@ffc/config',
+    '@ffc/providers',
+    '@ffc/db',
+    '@ffc/ui',
+  ],
   '@ffc/tsconfig': [],
   '@ffc/repo-checks': [],
 };

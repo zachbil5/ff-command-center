@@ -6,5 +6,6 @@ packages:
 
 # Only these dependencies may run install scripts (supply-chain control, DESIGN §8 R9).
 onlyBuiltDependencies:
+  - esbuild
   - sharp
   - unrs-resolver

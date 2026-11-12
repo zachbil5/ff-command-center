@@ -1,0 +1,31 @@
+{
+  "name": "@ffc/db",
+  "private": true,
+  "description": "I/O: Drizzle schema, migrations and repository functions for Postgres (DESIGN §6.1, §7). Neon in production, PGlite locally.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@ffc/config": "workspace:*",
+    "@ffc/domain": "workspace:*",
+    "@neondatabase/serverless": "1.2.0",
+    "drizzle-orm": "0.45.4",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "drizzle-kit": "0.31.11",
+    "fast-check": "4.10.2",
+    "tsx": "4.23.15",
+    "vitest": "5.1.0"
+  }
+}

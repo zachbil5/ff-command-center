@@ -29,7 +29,8 @@ certificates/
 # Raw (unscrubbed) provider recordings; only scrubbed fixtures are committed
 **/fixtures/raw/
 
-# Local data and logs
+# Local data and logs (PGlite database lives in .data/)
+.data/
 *.log
 npm-debug.log*
 pnpm-debug.log*
