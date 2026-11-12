@@ -1,28 +1,30 @@
-// Home page (M0 placeholder): proves workspace packages render through the app.
-// Replaced by the leagues dashboard in M1.
-import { PROVIDER_IDS, SPORT_IDS, getSport } from '@ffc/domain';
+// Home: Sleeper username search (DESIGN §6 F1). Composition only.
+import { Notice } from '@/components/notice';
+import { PageShell } from '@/components/page-shell';
+import { UsernameForm } from '@/components/username-form';
+import { routes } from '@/routes';
 
-const PROVIDER_LABELS: Record<(typeof PROVIDER_IDS)[number], string> = {
-  sleeper: 'Sleeper',
-  yahoo: 'Yahoo',
-};
-
-export default function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { error } = await searchParams;
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-16">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Fantasy Football Center</h1>
-        <p className="text-muted">Every fantasy league you play in, in one place. Coming soon.</p>
-      </header>
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Planned</h2>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
-          <dt className="font-medium">Sports</dt>
-          <dd>{SPORT_IDS.map((id) => getSport(id).label).join(', ')}</dd>
-          <dt className="font-medium">Providers</dt>
-          <dd>{PROVIDER_IDS.map((id) => PROVIDER_LABELS[id]).join(', ')}</dd>
-        </dl>
+    <PageShell>
+      <section className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">All your leagues, one place</h1>
+        <p className="text-muted">
+          Enter your Sleeper username to see every NFL league you’re in this season. Yahoo is coming
+          next.
+        </p>
       </section>
-    </main>
+      <UsernameForm action={routes.sleeperSearch} />
+      {error === 'invalid_username' ? (
+        <Notice title="That doesn’t look like a Sleeper username">
+          Sleeper usernames use letters, numbers and underscores.
+        </Notice>
+      ) : null}
+    </PageShell>
   );
 }

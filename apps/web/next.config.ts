@@ -7,7 +7,7 @@ const imageHosts = Object.values(PROVIDER_ENDPOINTS).flatMap((endpoint) => endpo
 
 const nextConfig: NextConfig = {
   // Workspace packages ship TypeScript source (DESIGN §4).
-  transpilePackages: ['@ffc/analysis', '@ffc/config', '@ffc/domain'],
+  transpilePackages: ['@ffc/analysis', '@ffc/config', '@ffc/domain', '@ffc/providers'],
   poweredByHeader: false,
   reactStrictMode: true,
   images: {

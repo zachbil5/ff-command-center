@@ -42,7 +42,7 @@ interface is built so they can be added later); public sign-up.
 | D9  | Providers in v1      | Sleeper (username, public API) and Yahoo (OAuth 2.0, read-only scope)                                                                                                                                                                 | User's leagues are on these. Each sits behind one `FantasyProvider` interface (§5).                                                                                                                                                             | ESPN later: needs `espn_s2`/`SWID` cookies for private leagues.                                                         |
 | D10 | Player values        | Our own value model in `analysis`: points-per-game / rest-of-season projection → value over replacement (VORP) using **each league's** roster and scoring settings. Optional external market values behind a `ValueSource` interface. | Owning the model avoids licensing problems and adapts to custom scoring. External sources (e.g. FantasyCalc) only after checking their terms. Never scrape sites without an API (e.g. KeepTradeCut).                                            | Only external values: easy but generic, and ToS risk.                                                                   |
 | D11 | Animation            | Motion (framer-motion) for UI transitions; `canvas-confetti` for the win burst; durations in a timings module                                                                                                                         | Small, well maintained, React-native API. Respects `prefers-reduced-motion` (static banner instead).                                                                                                                                            | Lottie: needs designed assets. Pure CSS: fine for transitions, weak for particles.                                      |
-| D12 | Testing              | Vitest, fast-check (property tests), MSW with recorded and scrubbed fixtures, Playwright for E2E                                                                                                                                      | Fast unit tests in every package; providers tested against real-shaped data without network.                                                                                                                                                    | Jest: slower, ESM pain.                                                                                                 |
+| D12 | Testing              | Vitest, fast-check (property tests), synthetic fixtures served through an injected HTTP function (§5.2; replaced MSW in M1), Playwright for E2E                                                                                       | Fast unit tests in every package; providers tested against real-shaped data without network.                                                                                                                                                    | Jest: slower, ESM pain.                                                                                                 |
 | D13 | Lint / format        | ESLint 9 flat config + typescript-eslint (strict, type-aware) + eslint-config-next for the app; Prettier; warnings fail CI. Layer rules are tests in `tooling/repo-checks` (§4).                                                      | Layer rules are enforced by tooling, not discipline. A small import-scanning test replaced `eslint-plugin-boundaries` in M0: no resolver plugins, and it also checks `package.json` declarations and purity.                                    | Biome: fast, but no Next.js rules.                                                                                      |
 | D14 | Hosting              | Vercel (Hobby) for the app; Neon for Postgres; Vercel Cron for daily jobs                                                                                                                                                             | Free, preview deploy per PR through the Vercel GitHub app, so **no deploy token is stored in GitHub**. Secrets live in Vercel env settings.                                                                                                     | Docker on a VPS: more control, more upkeep.                                                                             |
 | D15 | CI/CD                | GitHub Actions (checks) + Vercel Git integration (deploys)                                                                                                                                                                            | CI never needs production secrets. Details §10.                                                                                                                                                                                                 | Deploying from Actions with a Vercel token: one more secret to guard.                                                   |
@@ -191,25 +191,47 @@ apps/web/components → ui, domain (types only)
 
 ### 5.2 Provider adapter
 
+As built in M1 (`packages/providers/src/provider.ts`); later milestones add
+`getMatchups`, `getTransactions` and `getCurrentWeek`:
+
 ```ts
-// packages/providers/src/provider.ts
 interface FantasyProvider {
   readonly id: ProviderId;
   readonly sports: readonly Sport[];
-  readonly auth: 'none' | 'oauth'; // drives UI: "enter username" vs "Connect"
-  listLeagues(account: LinkedAccount, sport: Sport, season: number): Promise<League[]>;
+  currentSeason(sport: Sport): Promise<number>;
+  listLeagues(user: ProviderUser, sport: Sport, season: number): Promise<PartialList<League>>;
   getLeague(ref: LeagueRef): Promise<League>;
-  getTeams(ref: LeagueRef): Promise<Team[]>;
-  getMatchups(ref: LeagueRef, week: number): Promise<Matchup[]>;
-  getTransactions(ref: LeagueRef, week: number): Promise<Transaction[]>;
-  getCurrentWeek(sport: Sport): Promise<number>;
+  getTeams(ref: LeagueRef): Promise<readonly Team[]>;
+}
+/** Only providers with public usernames (Sleeper). Yahoo links by OAuth instead. */
+interface UsernameLookup {
+  findUser(username: string): Promise<ProviderUser>;
 }
 ```
 
-A **contract test suite** runs the same assertions against every adapter using
-recorded fixtures: every adapter returns valid domain objects, every team's
-roster refers to known players, matchups pair up, and so on. Adding a provider
-means making that suite pass.
+- **HTTP is injected.** Adapters take an `HttpGetJson` function
+  (`http.ts`): the app passes one built on `fetch` with Next.js
+  `revalidate` caching; tests pass `testing/fixture-http.ts`. This replaced
+  MSW from D12: no request interception library is needed.
+- **Errors are typed:** `ProviderNotFoundError` (unknown user/league; Sleeper
+  answers these with a `null` body, not 404), `ProviderUnavailableError`
+  (network, timeout, 429, 5xx) and `ProviderDataError` (wrong shape, too
+  large, not JSON). Features map them to `not_found` / `unavailable`
+  (`apps/web/src/features/leagues/load-result.ts`) so a provider problem
+  never becomes a crash page.
+- **One bad item doesn't hide the rest.** League lists are parsed item by
+  item; unreadable leagues are dropped and counted (`PartialList.skipped`)
+  and the page says how many were hidden. Cosmetic fields (avatars) fall
+  back to null instead of failing the response.
+- **Fixtures are synthetic.** `sleeper/fixtures/responses.json` copies the
+  live response shapes with invented names and ids, so there is nothing to
+  scrub (R1).
+
+A **contract test suite** (`testing/provider-contract.ts`) runs the same
+assertions against every adapter's fixtures: valid refs for the right
+provider and season, each listed league retrievable by its ref, teams with
+unique ids and finite non-negative records. Adding a provider means making
+that suite pass; later milestones extend it (matchups pair up, and so on).
 
 ### 5.3 Provider notes
 
@@ -406,7 +428,7 @@ Each milestone is a deployable vertical slice with CI green.
 | M   | Slice                  | Done when                                                                                                                                                                                                 |
 | --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Done 2026-11-11** (see M0 log).                              |
-| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL/local state).                                                                  |
+| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL). **Done 2026-11-11** (see M1 log).                                            |
 | M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3).                                                                                 |
 | M3  | Accounts + Yahoo       | Better Auth invite-only sign-in; Postgres; saved linked accounts; Yahoo OAuth connect, Yahoo leagues/matchups through the same UI; provider contract suite passes for both; celebration-seen moves to DB. |
 | M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                                                      |
@@ -453,21 +475,53 @@ the CSP nonce, no console or CSP errors).
   until the app's own sign-in lands (M3); then turn it off for production or
   add a custom domain so friends can reach it (§15 Q2).
 
+### M1 log (2026-11-11)
+
+Built: Sleeper username search → that user's NFL leagues for the current
+season (with a link to last season) → league page with standings (win %,
+then points for; the user's own team highlighted).
+
+- Routes: `/` (search form, plain GET, no client JavaScript), `/sleeper`
+  (route handler: validate, 303 redirect), `/sleeper/[username]?season=`,
+  `/leagues/[provider]/[sport]/[season]/[leagueId]?me=`. League URLs use
+  path segments rather than a `provider:sport:season:id` key, so nothing
+  needs decoding. All URL building and parsing lives in
+  `apps/web/src/routes.ts`.
+- Domain: `ProviderUser`, `League`, `Team`, `TeamRecord`. Analysis:
+  `standings()` (deterministic: any input order gives the same table).
+- Verified: 133 tests (property tests for standings order-independence,
+  username/route parsing, and "the adapter only throws provider errors on
+  any JSON"); lint, types, build. Production build smoke-tested against the
+  live Sleeper API: unknown user, invalid username, an `//evil.example`
+  redirect attempt, bad and unknown league URLs, and a real user's leagues
+  and a 10-team standings table (ranks contiguous, order correct, one row
+  highlighted, avatars load, no console or CSP errors, fits a 375px phone
+  after fixing name truncation).
+- Not done in M1: the per-provider concurrency cap in `PROVIDER_ENDPOINTS`
+  isn't enforced yet (M1 makes at most three parallel calls per page); add
+  it with matchups in M2.
+
 ## 13. Security controls → files
 
-| Control                                                  | File                                                                |
-| -------------------------------------------------------- | ------------------------------------------------------------------- |
-| R1 secrets kept out of git                               | `.gitignore`, `.env.example`, `.github/workflows/ci.yml` (gitleaks) |
-| R3 nonce CSP, no eval/inline in production               | `apps/web/src/security/csp.ts`, `apps/web/src/proxy.ts`             |
-| R3 static security headers, image host allowlist         | `apps/web/next.config.ts`                                           |
-| R3 `dangerouslySetInnerHTML` / `innerHTML` banned        | `eslint.config.mjs`                                                 |
-| R4 fixed provider hosts                                  | `packages/config/src/providers.ts`                                  |
-| R4 safe outbound URL building                            | `packages/providers/src/provider-url.ts`                            |
-| R4 safe provider id charset                              | `packages/domain/src/league-ref.ts`                                 |
-| Env errors never echo values                             | `packages/config/src/env.ts`                                        |
-| Only `config` reads env; pure packages stay pure         | `tooling/repo-checks/src/layers.test.ts`                            |
-| R9 frozen lockfile, audit, OSV, install-script allowlist | `.github/workflows/ci.yml`, `pnpm-workspace.yaml`                   |
-| R10 read-only CI token, SHA-pinned actions               | `.github/workflows/*.yml`                                           |
+| Control                                                   | File                                                                   |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| R1 secrets kept out of git                                | `.gitignore`, `.env.example`, `.github/workflows/ci.yml` (gitleaks)    |
+| R3 nonce CSP, no eval/inline in production                | `apps/web/src/security/csp.ts`, `apps/web/src/proxy.ts`                |
+| R3 static security headers, image host allowlist          | `apps/web/next.config.ts`                                              |
+| R3 `dangerouslySetInnerHTML` / `innerHTML` banned         | `eslint.config.mjs`                                                    |
+| R4 fixed provider hosts                                   | `packages/config/src/providers.ts`                                     |
+| R4 safe outbound URL building                             | `packages/providers/src/provider-url.ts`                               |
+| R4 safe provider id charset                               | `packages/domain/src/league-ref.ts`                                    |
+| R4 URL input parsed before use (username, season, league) | `apps/web/src/routes.ts`, `packages/providers/src/sleeper/raw.ts`      |
+| R6 search redirect only to same-origin relative paths     | `apps/web/src/app/sleeper/route.ts`                                    |
+| R5/R8 timeout, size cap, no redirects, typed errors       | `packages/providers/src/http.ts`, `packages/config/src/providers.ts`   |
+| R8 provider data validated and capped; bad items skipped  | `packages/providers/src/sleeper/raw.ts`, `sleeper/adapter.ts`          |
+| R3 avatars only from allowlisted CDN, plain ids only      | `packages/providers/src/avatar.ts`                                     |
+| R3 no inline `style` (blocked by CSP); own 404 page       | `apps/web/src/components/avatar.tsx`, `apps/web/src/app/not-found.tsx` |
+| Env errors never echo values                              | `packages/config/src/env.ts`                                           |
+| Only `config` reads env; pure packages stay pure          | `tooling/repo-checks/src/layers.test.ts`                               |
+| R9 frozen lockfile, audit, OSV, install-script allowlist  | `.github/workflows/ci.yml`, `pnpm-workspace.yaml`                      |
+| R10 read-only CI token, SHA-pinned actions                | `.github/workflows/*.yml`                                              |
 
 ## 14. Development
 

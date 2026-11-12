@@ -13,6 +13,14 @@ export {
   type LineupSlotDefinition,
 } from './sport';
 export {
+  LEAGUE_STATUSES,
+  type LeagueStatus,
+  type League,
+  type ProviderUser,
+  type Team,
+  type TeamRecord,
+} from './league';
+export {
   ExternalIdSchema,
   SeasonSchema,
   LeagueRefSchema,
