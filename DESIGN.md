@@ -46,7 +46,7 @@ interface is built so they can be added later); public sign-up.
 | D13 | Lint / format        | ESLint 9 flat config + typescript-eslint (strict, type-aware) + eslint-config-next for the app; Prettier; warnings fail CI. Layer rules are tests in `tooling/repo-checks` (§4).                                                      | Layer rules are enforced by tooling, not discipline. A small import-scanning test replaced `eslint-plugin-boundaries` in M0: no resolver plugins, and it also checks `package.json` declarations and purity.                                    | Biome: fast, but no Next.js rules.                                                                                      |
 | D14 | Hosting              | Vercel (Hobby) for the app; Neon for Postgres; Vercel Cron for daily jobs                                                                                                                                                             | Free, preview deploy per PR through the Vercel GitHub app, so **no deploy token is stored in GitHub**. Secrets live in Vercel env settings.                                                                                                     | Docker on a VPS: more control, more upkeep.                                                                             |
 | D15 | CI/CD                | GitHub Actions (checks) + Vercel Git integration (deploys)                                                                                                                                                                            | CI never needs production secrets. Details §10.                                                                                                                                                                                                 | Deploying from Actions with a Vercel token: one more secret to guard.                                                   |
-| D16 | Runtime              | Node.js current LTS, pinned in `.nvmrc` and `engines`; pnpm pinned via `packageManager`                                                                                                                                               | Same toolchain locally, in CI and on Vercel.                                                                                                                                                                                                    | —                                                                                                                       |
+| D16 | Runtime              | Node.js 24 LTS (supported to April 2028), pinned in `.nvmrc` and `engines` (root and `apps/web`); pnpm pinned via `packageManager`. Moving to Node 26 LTS is a planned, deliberate upgrade, not automatic.                            | Same toolchain locally, in CI and on Vercel.                                                                                                                                                                                                    | —                                                                                                                       |
 | D17 | Sports               | Sport is data, not a code path: a sport registry in `domain` (positions, lineup slots, scoring kind)                                                                                                                                  | Basketball later means adding registry entries and provider mappings, not forking features. NBA leagues often use **category** scoring, so the domain supports `points` and `categories` from day one (§5.3).                                   | Football-only types: basketball becomes a rewrite.                                                                      |
 
 Exact package versions live in `package.json` files and the lockfile, not in
@@ -58,7 +58,13 @@ Dependabot `ignore` with the reason):
   only support ESLint 9. ESLint 9 is out of upstream support, which is
   acceptable for a dev-only tool; move to 10 when eslint-config-next does.
 - **TypeScript 6** (not 7): typescript-eslint supports TypeScript < 6.1.
-- **Node 24 LTS** with matching `@types/node` 24.
+- **Node 24 LTS** with matching `@types/node` 24. `.nvmrc` is the source;
+  `engines.node` is `24.x` in the root **and** in `apps/web/package.json`,
+  because Vercel reads `engines` from the Root Directory (`apps/web`), not
+  the repo root. Without the app-level pin Vercel uses its default Node, and
+  `engine-strict` makes `pnpm install` fail (seen on the first deploy).
+  `tooling/repo-checks/src/toolchain.test.ts` keeps all pins equal to
+  `.nvmrc`.
 - `minimatch` is overridden to 11.0.8 (`pnpm.overrides`) to clear
   GHSA-g3hv-75wg-m249 in a lint-only dependency path. Drop the override when
   upstream moves.
@@ -421,8 +427,18 @@ the CSP nonce, no console or CSP errors).
   `web` app, and `tooling/repo-checks`.
 - Every page renders per request so the CSP nonce can be applied; static
   prerendering would ship scripts without a nonce.
-- Not yet verified: the GitHub Actions workflows have not run (no remote yet);
-  gitleaks and OSV-Scanner were not run locally. Vercel project not created.
+- GitHub (2026-11-11): public repo `zachbil5/ff-command-center`. First CI
+  and CodeQL runs passed every job; gitleaks scanned the full history (1
+  commit) with no leaks; 0 code scanning, Dependabot or secret scanning
+  alerts. Secret scanning + push protection, private vulnerability
+  reporting, Dependabot alerts and security updates are on; the `main`
+  ruleset is active (admin bypass).
+- Vercel: the first deploy failed with `ERR_PNPM_UNSUPPORTED_ENGINE`:
+  "Expected version: >=24 <25, Got: v26.13.0". Vercel's default Node is 26
+  and the pin was missing from `apps/web` (see §2). pnpm itself was fine:
+  Vercel read `packageManager` and used pnpm 10. Fixed by pinning
+  `engines.node` in the app. Production deploy and header check still
+  pending.
 
 ## 13. Security controls → files
 
