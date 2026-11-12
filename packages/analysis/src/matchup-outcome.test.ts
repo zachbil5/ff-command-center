@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { MATCHUP_STATUSES, matchupOutcome, type MatchupOutcome } from './matchup-outcome';
+import { MATCHUP_STATUSES } from '@ffc/domain';
+import { matchupOutcome, type MatchupOutcome } from './matchup-outcome';
 
 const score = fc.double({ min: 0, max: 400, noNaN: true, noDefaultInfinity: true });
 

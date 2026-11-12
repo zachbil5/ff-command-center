@@ -45,7 +45,20 @@ export default async function SleeperUserPage({
               <h1 className="text-2xl font-bold tracking-tight">
                 {result.user.displayName}’s leagues
               </h1>
-              <p className="text-sm text-muted">Sleeper · NFL {result.season}</p>
+              <p className="text-sm text-muted">
+                Sleeper · NFL {result.season}
+                {result.season === result.currentSeason ? (
+                  <>
+                    {' · '}
+                    <Link
+                      href={routes.myMatchups(result.user.username)}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      My matchups this week
+                    </Link>
+                  </>
+                ) : null}
+              </p>
             </div>
             <nav aria-label="Season" className="flex gap-3 text-sm">
               {[result.currentSeason, result.currentSeason - 1].map((year) => (
@@ -75,7 +88,7 @@ export default async function SleeperUserPage({
             <LeagueList
               items={result.leagues.map((league) => ({
                 league,
-                href: routes.league(league.ref, result.user.userId),
+                href: routes.league(league.ref, { me: result.user.userId }),
                 avatarSrc: avatarUrl(league.ref.provider, league.avatarId),
               }))}
             />

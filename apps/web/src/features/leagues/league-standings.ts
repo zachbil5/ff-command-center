@@ -3,17 +3,11 @@
 import { standings, type StandingRow } from '@ffc/analysis';
 import type { League, LeagueRef } from '@ffc/domain';
 import type { FantasyProvider } from '@ffc/providers';
-import { loadSafely, type LoadResult } from './load-result';
-import { sleeperProvider } from './provider-registry';
+import { loadSafely, providerFor, type LoadResult } from '../provider-access';
 
 export interface LeagueStandings {
   readonly league: League;
   readonly rows: readonly StandingRow[];
-}
-
-/** Adapter for each provider; Yahoo joins in M3. */
-function providerFor(ref: LeagueRef): FantasyProvider | null {
-  return ref.provider === 'sleeper' ? sleeperProvider() : null;
 }
 
 export async function loadLeagueStandings(

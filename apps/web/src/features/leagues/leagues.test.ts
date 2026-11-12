@@ -26,6 +26,8 @@ function league(name: string, season = 2026): League {
     teamCount: 2,
     scoringKind: 'points',
     avatarId: null,
+    currentWeek: 10,
+    lastScoredWeek: 9,
   };
 }
 
@@ -56,6 +58,7 @@ function fake(overrides: Partial<FantasyProvider & UsernameLookup> = {}) {
     },
     getLeague: (ref: LeagueRef) => Promise.resolve({ ...league('Alpha'), ref }),
     getTeams: () => Promise.resolve([team('b', 3), team('a', 7)]),
+    getMatchups: () => Promise.resolve({ items: [], skipped: 0 }),
     ...overrides,
   };
   return { provider, seasons };

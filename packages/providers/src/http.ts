@@ -59,3 +59,39 @@ export function createFetchHttpGetJson(deps: FetchHttpDeps): HttpGetJson {
     }
   };
 }
+
+/**
+ * Wraps an HttpGetJson so at most `max` requests are in flight at once; the rest wait in
+ * order (DESIGN §8 R5). Pages that load many leagues can't burst past a provider's limits.
+ */
+export function withConcurrencyLimit(get: HttpGetJson, max: number): HttpGetJson {
+  if (!Number.isInteger(max) || max < 1) throw new RangeError('max must be a positive integer');
+  let active = 0;
+  const waiting: (() => void)[] = [];
+
+  const acquire = (): Promise<void> => {
+    if (active < max) {
+      active += 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      waiting.push(() => {
+        active += 1;
+        resolve();
+      });
+    });
+  };
+  const release = () => {
+    active -= 1;
+    waiting.shift()?.();
+  };
+
+  return async (url, options) => {
+    await acquire();
+    try {
+      return await get(url, options);
+    } finally {
+      release();
+    }
+  };
+}

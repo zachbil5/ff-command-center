@@ -1,8 +1,7 @@
 // Decides a points matchup's outcome from the user's side (DESIGN F2, F6). Pure: the caller
 // supplies status and scores. Does not own fetching scores or deciding when a week is final.
 
-export const MATCHUP_STATUSES = ['upcoming', 'live', 'final'] as const;
-export type MatchupStatus = (typeof MATCHUP_STATUSES)[number];
+import type { MatchupStatus } from '@ffc/domain';
 
 export type MatchupOutcome = 'win' | 'loss' | 'tie' | 'pending';
 

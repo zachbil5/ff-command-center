@@ -1,5 +1,7 @@
 /* Global styles and design tokens (DESIGN D4). Themes override variables only. */
 @import 'tailwindcss';
+/* Workspace UI package sources live outside this app; let Tailwind see their classes. */
+@source '../../../../packages/ui/src';
 
 :root {
   --color-bg: #f7f8fa;
@@ -28,6 +30,7 @@
   --color-muted: var(--color-muted);
   --color-accent: var(--color-accent);
   --color-border: var(--color-border);
+  --animate-pop-in: pop-in 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -35,4 +38,15 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

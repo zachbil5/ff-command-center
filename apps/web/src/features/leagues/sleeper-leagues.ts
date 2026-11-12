@@ -2,8 +2,7 @@
 // Does not own rendering or URL building.
 import type { League, ProviderUser } from '@ffc/domain';
 import type { FantasyProvider, UsernameLookup } from '@ffc/providers';
-import { loadSafely, type LoadResult } from './load-result';
-import { sleeperProvider } from './provider-registry';
+import { loadSafely, sleeperProvider, type LoadResult } from '../provider-access';
 
 export interface SleeperLeagues {
   readonly user: ProviderUser;

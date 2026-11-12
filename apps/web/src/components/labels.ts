@@ -1,5 +1,6 @@
 // User-facing labels and number formats for domain values. One home so pages agree.
-import type { LeagueStatus, ProviderId } from '@ffc/domain';
+import type { MatchupOutcome } from '@ffc/analysis';
+import type { LeagueStatus, MatchupStatus, ProviderId } from '@ffc/domain';
 
 export const PROVIDER_LABEL: Record<ProviderId, string> = {
   sleeper: 'Sleeper',
@@ -11,6 +12,20 @@ export const LEAGUE_STATUS_LABEL: Record<LeagueStatus, string> = {
   drafting: 'Drafting',
   in_season: 'In season',
   complete: 'Complete',
+};
+
+export const MATCHUP_STATUS_LABEL: Record<MatchupStatus, string> = {
+  upcoming: 'Upcoming',
+  // Sleeper's current week starts before kickoff, so "Live" would mislead early in the week.
+  live: 'This week',
+  final: 'Final',
+};
+
+export const OUTCOME_LABEL: Record<Exclude<MatchupOutcome, 'pending'> | 'bye', string> = {
+  win: 'Won',
+  loss: 'Lost',
+  tie: 'Tied',
+  bye: 'Bye',
 };
 
 const points = new Intl.NumberFormat('en-US', {

@@ -35,13 +35,13 @@ interface is built so they can be added later); public sign-up.
 | D2  | Repo shape           | pnpm workspaces + Turborepo monorepo                                                                                                                                                                                                  | Packages with enforced boundaries (§4); Turbo caches lint/test/build per package. A native app could reuse `domain` and `analysis` later.                                                                                                       | Single Next.js app: simpler at first, but boundaries rot.                                                               |
 | D3  | App framework        | Next.js (App Router, current major), React 19                                                                                                                                                                                         | Server code is needed anyway: Yahoo OAuth needs a client secret, provider calls need caching and rate limiting, and some providers block browser CORS. Route handlers + server components keep that server side. Vercel-native preview deploys. | Vite SPA + separate API (Hono/Fastify): two deployables. Remix/React Router 7: fine too, smaller hosting story.         |
 | D4  | Styling / components | Tailwind CSS v4 + shadcn/ui (Radix primitives)                                                                                                                                                                                        | Accessible primitives; components are copied into our repo, so no runtime lock-in. Design tokens as CSS variables.                                                                                                                              | MUI / Chakra: heavier, harder to theme.                                                                                 |
-| D5  | Client data          | TanStack Query for client-side polling and cache; server components for first render                                                                                                                                                  | Matchups need polling during games, with stale-while-revalidate and backoff.                                                                                                                                                                    | SWR: similar; Query has better devtools and mutation story.                                                             |
+| D5  | Client data          | Server components render all data; live weeks re-render with `router.refresh()` on an interval (`LiveRefresh`), paused while the tab is hidden. TanStack Query was the plan; M2 didn't need a client cache.                           | The server already caches provider calls (§3.2), so a refresh is one cheap round trip and keeps a single data path. Revisit if client-side mutations or optimistic updates arrive.                                                              | TanStack Query / SWR: a second cache and fetch layer for no gain yet.                                                   |
 | D6  | Validation           | Zod at every boundary (env, provider responses, route input)                                                                                                                                                                          | Provider APIs are unofficial or loosely typed; parse into domain types or reject (§8).                                                                                                                                                          | io-ts / valibot: fine; Zod has the widest ecosystem.                                                                    |
 | D7  | Database             | Postgres (Neon free tier) via Drizzle ORM + drizzle-kit migrations                                                                                                                                                                    | Stores users, linked accounts, encrypted Yahoo tokens, cached snapshots, celebration-seen flags. Drizzle is typed SQL with no codegen step.                                                                                                     | Supabase: also fine. SQLite/Turso: works, less standard on Vercel. Prisma: heavier, binary engine.                      |
 | D8  | Auth (app sign-in)   | Better Auth, invite-only (Google or email magic link)                                                                                                                                                                                 | Small friend group, no passwords stored by us. Yahoo linking is a separate OAuth "connection", not the app login.                                                                                                                               | Auth.js: now maintained by the Better Auth team. Clerk: hosted, good, but external dependency for user data.            |
 | D9  | Providers in v1      | Sleeper (username, public API) and Yahoo (OAuth 2.0, read-only scope)                                                                                                                                                                 | User's leagues are on these. Each sits behind one `FantasyProvider` interface (§5).                                                                                                                                                             | ESPN later: needs `espn_s2`/`SWID` cookies for private leagues.                                                         |
 | D10 | Player values        | Our own value model in `analysis`: points-per-game / rest-of-season projection → value over replacement (VORP) using **each league's** roster and scoring settings. Optional external market values behind a `ValueSource` interface. | Owning the model avoids licensing problems and adapts to custom scoring. External sources (e.g. FantasyCalc) only after checking their terms. Never scrape sites without an API (e.g. KeepTradeCut).                                            | Only external values: easy but generic, and ToS risk.                                                                   |
-| D11 | Animation            | Motion (framer-motion) for UI transitions; `canvas-confetti` for the win burst; durations in a timings module                                                                                                                         | Small, well maintained, React-native API. Respects `prefers-reduced-motion` (static banner instead).                                                                                                                                            | Lottie: needs designed assets. Pure CSS: fine for transitions, weak for particles.                                      |
+| D11 | Animation            | `canvas-confetti` (ISC, no dependencies) for the win burst; a CSS keyframe (`animate-pop-in`) for the banner; durations in `packages/ui/src/celebration/timings.ts`. Motion was planned and dropped in M2.                            | Motion renders initial `style` attributes on the server, which the nonce CSP blocks. canvas-confetti styles its canvas from script (allowed) and runs with `useWorker: false` (no blob: worker). `prefers-reduced-motion` → banner only.        | Motion: CSP conflict. Lottie: needs designed assets.                                                                    |
 | D12 | Testing              | Vitest, fast-check (property tests), synthetic fixtures served through an injected HTTP function (§5.2; replaced MSW in M1), Playwright for E2E                                                                                       | Fast unit tests in every package; providers tested against real-shaped data without network.                                                                                                                                                    | Jest: slower, ESM pain.                                                                                                 |
 | D13 | Lint / format        | ESLint 9 flat config + typescript-eslint (strict, type-aware) + eslint-config-next for the app; Prettier; warnings fail CI. Layer rules are tests in `tooling/repo-checks` (§4).                                                      | Layer rules are enforced by tooling, not discipline. A small import-scanning test replaced `eslint-plugin-boundaries` in M0: no resolver plugins, and it also checks `package.json` declarations and purity.                                    | Biome: fast, but no Next.js rules.                                                                                      |
 | D14 | Hosting              | Vercel (Hobby) for the app; Neon for Postgres; Vercel Cron for daily jobs                                                                                                                                                             | Free, preview deploy per PR through the Vercel GitHub app, so **no deploy token is stored in GitHub**. Secrets live in Vercel env settings.                                                                                                     | Docker on a VPS: more control, more upkeep.                                                                             |
@@ -121,8 +121,9 @@ apps/
   web/                    Next.js app (edge + composition only)
     src/app/              routes, layouts, route handlers (thin)
     src/features/         server-side feature functions
-      leagues/ matchups/ analysis/ trades/ linking/ celebration/
-    src/state/            client state (query hooks, UI stores)
+      provider-access/    adapter wiring (cache, request cap) + error → result
+      leagues/ matchups/  one folder per feature; later: analysis/ trades/ linking/
+    src/state/            client state (e.g. which wins were celebrated)
     src/components/       presentational components (props in, callbacks out)
 packages/
   domain/                 PURE. Types + Zod schemas: Sport registry, League,
@@ -136,7 +137,7 @@ packages/
   config/                 Typed env parsing, cache policy, limits, timings,
                           provider base URLs. Only place that reads process.env.
   ui/                     Design-system components and the celebration
-                          animation (no data fetching). (Created in M2.)
+                          animation (no data fetching).
 tooling/
   tsconfig/               Shared compiler settings.
   repo-checks/            Tests that enforce this section and §9.
@@ -191,8 +192,8 @@ apps/web/components → ui, domain (types only)
 
 ### 5.2 Provider adapter
 
-As built in M1 (`packages/providers/src/provider.ts`); later milestones add
-`getMatchups`, `getTransactions` and `getCurrentWeek`:
+As built through M2 (`packages/providers/src/provider.ts`); later milestones add
+`getTransactions`:
 
 ```ts
 interface FantasyProvider {
@@ -202,6 +203,12 @@ interface FantasyProvider {
   listLeagues(user: ProviderUser, sport: Sport, season: number): Promise<PartialList<League>>;
   getLeague(ref: LeagueRef): Promise<League>;
   getTeams(ref: LeagueRef): Promise<readonly Team[]>;
+  /** freshness picks the matchupsLive / matchupsIdle cache lifetime. */
+  getMatchups(
+    ref: LeagueRef,
+    week: number,
+    freshness: 'live' | 'idle',
+  ): Promise<PartialList<Matchup>>;
 }
 /** Only providers with public usernames (Sleeper). Yahoo links by OAuth instead. */
 interface UsernameLookup {
@@ -275,11 +282,31 @@ record and rank.
 
 ### F2 Matchups
 
-- Week picker defaults to the current week from the provider.
-- "My matchups" shows one card per league: me vs opponent, score, projected,
-  status. "League" view shows every pairing.
-- During game windows the client polls at the matchup TTL with backoff, and
-  stops when the tab is hidden.
+- **Week state comes from the league, not the calendar.** Each `League`
+  carries `currentWeek` and `lastScoredWeek` (Sleeper's `leg` and
+  `last_scored_leg`). `analysis/week.ts`: a week is `final` once scored,
+  once the league has moved past it, or when the league is complete; `live`
+  ("This week" in the UI, since Sleeper's week starts before kickoff) for the
+  current week of an active league; otherwise `upcoming`. A property test
+  checks status never goes backwards from one week to the next.
+- **Week picker** (`?week=`) defaults to the league's current week, the last
+  scored week once complete, else week 1. "My matchups" uses the week most
+  leagues agree on.
+- **"My matchups"** (`/sleeper/<username>/matchups`): one card per league in
+  the current season with me vs opponent, points, status and result; leagues
+  without a game say why (not started, no game, no team); one league failing
+  doesn't blank the page. **League page**: every pairing for the week above
+  the standings.
+- **Pairing:** rosters sharing a `matchup_id` play each other; a lone roster
+  or a missing id is a bye; groups of three and duplicate rosters are dropped
+  and counted. A commissioner's `custom_points` overrides `points`.
+- **Live updates:** while a week is live the page re-renders every
+  `matchupsLive` seconds (60), paused while the tab is hidden; the server
+  cache means many viewers still cost one provider call per minute.
+- **Request cap:** `withConcurrencyLimit` keeps each server instance at
+  `maxConcurrentRequests` per provider (8 for Sleeper).
+- Not yet: projected points, co-owners (Sleeper `co_owners`), and the
+  "league median" extra game some leagues play.
 
 ### F3 League analysis (pure functions in `analysis`)
 
@@ -312,13 +339,18 @@ record and rank.
 
 ### F6 Win celebration
 
-- Trigger: the user opens the app, and a matchup of theirs is `final`, they
-  won, and `celebration_seen(user, leagueRef, week)` is not set.
+- Trigger: "My matchups" finds a win in each league's latest **scored** week
+  (`celebrationWeek`: stricter than `final`, so no celebration before
+  Sleeper finishes scoring), and this browser hasn't celebrated it yet.
+  Until M3 "seen" lives in `localStorage` (`apps/web/src/state/celebration-seen.ts`,
+  failures mean "not seen"); M3 moves it to `celebration_seen`.
 - Show once per (league, week); multiple wins → one combined celebration.
   "Replay" button on the matchup card.
 - `prefers-reduced-motion` → static "You won!" banner, no confetti.
-- Component lives in `packages/ui/celebration/`, takes `{ wins[] , onDone }`,
-  has no data fetching. Durations come from `timings.ts`.
+- Component lives in `packages/ui/src/celebration/`, takes `{ wins, onDone }`,
+  has no data fetching. It renders only after hydration (the server can't
+  know what a browser has seen), focuses its button, and closes on Escape.
+  Durations come from `timings.ts`.
 
 ## 7. Data model (Postgres)
 
@@ -429,7 +461,7 @@ Each milestone is a deployable vertical slice with CI green.
 | --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Done 2026-11-11** (see M0 log).                              |
 | M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL). **Done 2026-11-11** (see M1 log).                                            |
-| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3).                                                                                 |
+| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3). **Done 2026-11-11** (see M2 log).                                               |
 | M3  | Accounts + Yahoo       | Better Auth invite-only sign-in; Postgres; saved linked accounts; Yahoo OAuth connect, Yahoo leagues/matchups through the same UI; provider contract suite passes for both; celebration-seen moves to DB. |
 | M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                                                      |
 | M5  | Trade calculator       | Two-sided picker, lineup-aware evaluation, fairness verdict.                                                                                                                                              |
@@ -497,31 +529,61 @@ then points for; the user's own team highlighted).
   and a 10-team standings table (ranks contiguous, order correct, one row
   highlighted, avatars load, no console or CSP errors, fits a 375px phone
   after fixing name truncation).
-- Not done in M1: the per-provider concurrency cap in `PROVIDER_ENDPOINTS`
-  isn't enforced yet (M1 makes at most three parallel calls per page); add
-  it with matchups in M2.
+- Not done in M1: the per-provider concurrency cap (done in M2).
+
+### M2 log (2026-11-11)
+
+Built: matchups for any week on the league page (every pairing, winners
+bold once final), "My matchups" across all of a user's current-season
+leagues, live re-rendering during the current week, and the win celebration
+with Replay. New package `@ffc/ui` holds the celebration.
+
+- Domain: `Matchup`, `MatchupSide`, `MatchupStatus` (moved from analysis
+  so it has one home); `League.currentWeek` / `lastScoredWeek`. Analysis:
+  `weekStatus`, `defaultWeek`, `celebrationWeek`, `commonDefaultWeek`,
+  `teamWeek`.
+- Providers: `getMatchups` with live/idle cache lifetimes, Sleeper pairing
+  (`mapMatchups`), the request cap, and contract-suite checks that every
+  team plays at most once a week and only against teams in the league.
+- Web: `features/provider-access` (shared adapter wiring and error mapping,
+  so features don't import each other), `features/matchups`, new routes
+  `/sleeper/<username>/matchups?week=` and `?week=` on league pages.
+- Verified: 185 tests, including properties that week status never goes
+  backwards (checked against the broken rule first), at most one week is
+  live, pairing never lists a team twice and accounts for every entry, and
+  the request cap never exceeds its limit. Production build against live
+  Sleeper with a real account: week 9 Final, week 10 This week (live
+  refresh shown), week 12 Upcoming; "My matchups" with two leagues; the
+  celebration listed both week-9 wins, took focus, and stayed dismissed after
+  a reload; Replay works; with reduced motion the banner shows without
+  confetti, and without it the confetti canvas runs (fixed, click-through)
+  with no console or CSP errors; fits a 375px phone.
+- Found while testing: Sleeper's current week begins before kickoff, so the
+  live state is labelled "This week" rather than "Live".
 
 ## 13. Security controls → files
 
-| Control                                                   | File                                                                   |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| R1 secrets kept out of git                                | `.gitignore`, `.env.example`, `.github/workflows/ci.yml` (gitleaks)    |
-| R3 nonce CSP, no eval/inline in production                | `apps/web/src/security/csp.ts`, `apps/web/src/proxy.ts`                |
-| R3 static security headers, image host allowlist          | `apps/web/next.config.ts`                                              |
-| R3 `dangerouslySetInnerHTML` / `innerHTML` banned         | `eslint.config.mjs`                                                    |
-| R4 fixed provider hosts                                   | `packages/config/src/providers.ts`                                     |
-| R4 safe outbound URL building                             | `packages/providers/src/provider-url.ts`                               |
-| R4 safe provider id charset                               | `packages/domain/src/league-ref.ts`                                    |
-| R4 URL input parsed before use (username, season, league) | `apps/web/src/routes.ts`, `packages/providers/src/sleeper/raw.ts`      |
-| R6 search redirect only to same-origin relative paths     | `apps/web/src/app/sleeper/route.ts`                                    |
-| R5/R8 timeout, size cap, no redirects, typed errors       | `packages/providers/src/http.ts`, `packages/config/src/providers.ts`   |
-| R8 provider data validated and capped; bad items skipped  | `packages/providers/src/sleeper/raw.ts`, `sleeper/adapter.ts`          |
-| R3 avatars only from allowlisted CDN, plain ids only      | `packages/providers/src/avatar.ts`                                     |
-| R3 no inline `style` (blocked by CSP); own 404 page       | `apps/web/src/components/avatar.tsx`, `apps/web/src/app/not-found.tsx` |
-| Env errors never echo values                              | `packages/config/src/env.ts`                                           |
-| Only `config` reads env; pure packages stay pure          | `tooling/repo-checks/src/layers.test.ts`                               |
-| R9 frozen lockfile, audit, OSV, install-script allowlist  | `.github/workflows/ci.yml`, `pnpm-workspace.yaml`                      |
-| R10 read-only CI token, SHA-pinned actions                | `.github/workflows/*.yml`                                              |
+| Control                                                        | File                                                                                                                    |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| R1 secrets kept out of git                                     | `.gitignore`, `.env.example`, `.github/workflows/ci.yml` (gitleaks)                                                     |
+| R3 nonce CSP, no eval/inline in production                     | `apps/web/src/security/csp.ts`, `apps/web/src/proxy.ts`                                                                 |
+| R3 static security headers, image host allowlist               | `apps/web/next.config.ts`                                                                                               |
+| R3 `dangerouslySetInnerHTML` / `innerHTML` banned              | `eslint.config.mjs`                                                                                                     |
+| R4 fixed provider hosts                                        | `packages/config/src/providers.ts`                                                                                      |
+| R4 safe outbound URL building                                  | `packages/providers/src/provider-url.ts`                                                                                |
+| R4 safe provider id charset                                    | `packages/domain/src/league-ref.ts`                                                                                     |
+| R4 URL input parsed before use (username, season, league)      | `apps/web/src/routes.ts`, `packages/providers/src/sleeper/raw.ts`                                                       |
+| R6 search redirect only to same-origin relative paths          | `apps/web/src/app/sleeper/route.ts`                                                                                     |
+| R5 per-provider request cap                                    | `packages/providers/src/http.ts` (`withConcurrencyLimit`), `apps/web/src/features/provider-access/provider-registry.ts` |
+| R3 celebration: no SSR styles, no blob: worker, reduced motion | `packages/ui/src/celebration/celebration.tsx`                                                                           |
+| R5/R8 timeout, size cap, no redirects, typed errors            | `packages/providers/src/http.ts`, `packages/config/src/providers.ts`                                                    |
+| R8 provider data validated and capped; bad items skipped       | `packages/providers/src/sleeper/raw.ts`, `sleeper/adapter.ts`                                                           |
+| R3 avatars only from allowlisted CDN, plain ids only           | `packages/providers/src/avatar.ts`                                                                                      |
+| R3 no inline `style` (blocked by CSP); own 404 page            | `apps/web/src/components/avatar.tsx`, `apps/web/src/app/not-found.tsx`                                                  |
+| Env errors never echo values                                   | `packages/config/src/env.ts`                                                                                            |
+| Only `config` reads env; pure packages stay pure               | `tooling/repo-checks/src/layers.test.ts`                                                                                |
+| R9 frozen lockfile, audit, OSV, install-script allowlist       | `.github/workflows/ci.yml`, `pnpm-workspace.yaml`                                                                       |
+| R10 read-only CI token, SHA-pinned actions                     | `.github/workflows/*.yml`                                                                                               |
 
 ## 14. Development
 

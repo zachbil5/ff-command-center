@@ -1,6 +1,7 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { ProviderDataError, ProviderNotFoundError, ProviderUnavailableError } from './errors';
-import { createFetchHttpGetJson } from './http';
+import { createFetchHttpGetJson, withConcurrencyLimit, type HttpGetJson } from './http';
 
 const url = new URL('https://api.sleeper.app/v1/state/nfl');
 
@@ -68,5 +69,47 @@ describe('createFetchHttpGetJson', () => {
     } catch (error) {
       expect((error as Error).message).not.toContain('someone_private');
     }
+  });
+});
+
+describe('withConcurrencyLimit', () => {
+  it('never runs more than `max` requests at once, and runs them all', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 5 }),
+        fc.array(fc.integer({ min: 0, max: 3 }), { minLength: 1, maxLength: 25 }),
+        async (max, delays) => {
+          let inFlight = 0;
+          let peak = 0;
+          const slow: HttpGetJson = async (u) => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            await new Promise((r) => setTimeout(r, Number(u.searchParams.get('d'))));
+            inFlight -= 1;
+            return u.searchParams.get('i');
+          };
+          const limited = withConcurrencyLimit(slow, max);
+          const results = await Promise.all(
+            delays.map((d, i) =>
+              limited(new URL(`https://x.test/?d=${d}&i=${i}`), { ttlSeconds: 0 }),
+            ),
+          );
+          expect(peak).toBeLessThanOrEqual(max);
+          expect(results).toEqual(delays.map((_, i) => String(i)));
+        },
+      ),
+      { numRuns: 30 },
+    );
+  });
+
+  it('releases its slot when a request fails', async () => {
+    const failing: HttpGetJson = () => Promise.reject(new ProviderUnavailableError('sleeper', 'x'));
+    const limited = withConcurrencyLimit(failing, 1);
+    await expect(limited(url, { ttlSeconds: 0 })).rejects.toBeInstanceOf(ProviderUnavailableError);
+    await expect(limited(url, { ttlSeconds: 0 })).rejects.toBeInstanceOf(ProviderUnavailableError);
+  });
+
+  it('rejects a non-positive limit', () => {
+    expect(() => withConcurrencyLimit(() => Promise.resolve(null), 0)).toThrow(RangeError);
   });
 });
