@@ -36,7 +36,8 @@ describe('workspace layers', () => {
           if (internal(spec)) {
             const [scope, name, ...deep] = spec.split('/');
             const target = `${scope ?? ''}/${name ?? ''}`;
-            if (deep.length > 0 && target !== '@ffc/tsconfig')
+            const testOnlyEntry = spec === '@ffc/db/testing' && isTestFile(file);
+            if (deep.length > 0 && target !== '@ffc/tsconfig' && !testOnlyEntry)
               problems.push(`deep import ${where}`);
             if (!declared.has(target)) problems.push(`undeclared ${where}`);
           } else if (spec.startsWith('.')) {

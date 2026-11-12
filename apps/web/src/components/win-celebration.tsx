@@ -1,42 +1,44 @@
 'use client';
-// Shows the celebration for wins this browser hasn't seen, and again on "Replay" (DESIGN F6).
-// Wiring only: the overlay is @ffc/ui's Celebration; "seen" lives in state/celebration-seen.
+// Shows the celebration for wins the server says this user hasn't seen, records them as seen
+// when dismissed, and shows one again on "Replay" (DESIGN F6). Wiring only: the overlay is
+// @ffc/ui's Celebration; "seen" lives in the database via a server action.
 import { Celebration, type WinSummary } from '@ffc/ui';
 import { useCallback, useEffect, useState } from 'react';
-import { browserSeenStore, REPLAY_EVENT, unseenWins } from '@/state/celebration-seen';
+import { REPLAY_EVENT } from '@/state/celebration-events';
 
-function store() {
-  return browserSeenStore(typeof window === 'undefined' ? null : window.localStorage);
+export interface CelebratedWin extends WinSummary {
+  readonly leagueKey: string;
 }
 
-export function WinCelebration({ wins }: { wins: readonly WinSummary[] }) {
-  const [showing, setShowing] = useState<readonly WinSummary[]>([]);
-
-  // Runs after hydration: the server can't know what this browser has seen, so it renders
-  // nothing and the overlay appears on the client (also keeps server HTML free of it).
-  useEffect(() => {
-    const fresh = unseenWins(wins, store());
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing from localStorage, an external store read once per page
-    if (fresh.length > 0) setShowing(fresh);
-  }, [wins]);
+export function WinCelebration({
+  unseen,
+  replayable,
+  markSeen,
+}: {
+  /** Wins to celebrate on arrival (already filtered by the server). */
+  unseen: readonly CelebratedWin[];
+  /** Wins a Replay button may show again. */
+  replayable: readonly CelebratedWin[];
+  markSeen: (wins: { leagueKey: string; week: number }[]) => Promise<void>;
+}) {
+  const [showing, setShowing] = useState<readonly CelebratedWin[]>(unseen);
 
   useEffect(() => {
     const onReplay = (event: Event) => {
       const key = (event as CustomEvent<string>).detail;
-      const win = wins.find((w) => w.key === key);
+      const win = replayable.find((w) => w.key === key);
       if (win !== undefined) setShowing([win]);
     };
     window.addEventListener(REPLAY_EVENT, onReplay);
     return () => {
       window.removeEventListener(REPLAY_EVENT, onReplay);
     };
-  }, [wins]);
+  }, [replayable]);
 
   const done = useCallback(() => {
-    const seen = store();
-    for (const win of showing) seen.add(win.key);
+    void markSeen(showing.map(({ leagueKey, week }) => ({ leagueKey, week })));
     setShowing([]);
-  }, [showing]);
+  }, [showing, markSeen]);
 
   return showing.length > 0 ? <Celebration wins={showing} onDone={done} /> : null;
 }

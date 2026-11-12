@@ -7,11 +7,13 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "turbo run dev --filter=@ffc/web",
+    "dev": "pnpm db:migrate && turbo run dev --filter=@ffc/web",
     "build": "turbo run build",
     "lint": "eslint --max-warnings=0 .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "db:generate": "pnpm --filter @ffc/db generate",
+    "db:migrate": "pnpm --filter @ffc/db migrate",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
@@ -31,7 +33,8 @@
   },
   "pnpm": {
     "overrides": {
-      "minimatch@>=7 <11.0.1": "11.0.8"
+      "minimatch@>=7 <11.0.1": "11.0.8",
+      "esbuild@<0.25.0": "0.25.12"
     }
   }
 }

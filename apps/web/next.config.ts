@@ -7,7 +7,17 @@ const imageHosts = Object.values(PROVIDER_ENDPOINTS).flatMap((endpoint) => endpo
 
 const nextConfig: NextConfig = {
   // Workspace packages ship TypeScript source (DESIGN §4).
-  transpilePackages: ['@ffc/analysis', '@ffc/config', '@ffc/domain', '@ffc/providers', '@ffc/ui'],
+  transpilePackages: [
+    '@ffc/analysis',
+    '@ffc/config',
+    '@ffc/db',
+    '@ffc/domain',
+    '@ffc/providers',
+    '@ffc/ui',
+  ],
+  // PGlite (local-only database) ships WebAssembly and data files; load it from node_modules
+  // at runtime instead of bundling it (DESIGN §6.1).
+  serverExternalPackages: ['@electric-sql/pglite'],
   poweredByHeader: false,
   reactStrictMode: true,
   images: {

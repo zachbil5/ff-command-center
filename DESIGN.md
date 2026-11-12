@@ -37,7 +37,7 @@ interface is built so they can be added later); public sign-up.
 | D4  | Styling / components | Tailwind CSS v4 + shadcn/ui (Radix primitives)                                                                                                                                                                                        | Accessible primitives; components are copied into our repo, so no runtime lock-in. Design tokens as CSS variables.                                                                                                                              | MUI / Chakra: heavier, harder to theme.                                                                                 |
 | D5  | Client data          | Server components render all data; live weeks re-render with `router.refresh()` on an interval (`LiveRefresh`), paused while the tab is hidden. TanStack Query was the plan; M2 didn't need a client cache.                           | The server already caches provider calls (§3.2), so a refresh is one cheap round trip and keeps a single data path. Revisit if client-side mutations or optimistic updates arrive.                                                              | TanStack Query / SWR: a second cache and fetch layer for no gain yet.                                                   |
 | D6  | Validation           | Zod at every boundary (env, provider responses, route input)                                                                                                                                                                          | Provider APIs are unofficial or loosely typed; parse into domain types or reject (§8).                                                                                                                                                          | io-ts / valibot: fine; Zod has the widest ecosystem.                                                                    |
-| D7  | Database             | Postgres (Neon free tier) via Drizzle ORM + drizzle-kit migrations                                                                                                                                                                    | Stores users, linked accounts, encrypted Yahoo tokens, cached snapshots, celebration-seen flags. Drizzle is typed SQL with no codegen step.                                                                                                     | Supabase: also fine. SQLite/Turso: works, less standard on Vercel. Prisma: heavier, binary engine.                      |
+| D7  | Database             | Postgres via Drizzle ORM + drizzle-kit migrations: Neon (HTTP driver) on Vercel, PGlite (in-process, WebAssembly) for local development and tests.                                                                                    | Stores users, linked accounts, encrypted Yahoo tokens, cached snapshots, celebration-seen flags. Drizzle is typed SQL with no codegen step.                                                                                                     | Supabase: also fine. SQLite/Turso: works, less standard on Vercel. Prisma: heavier, binary engine.                      |
 | D8  | Auth (app sign-in)   | Better Auth, invite-only (Google or email magic link)                                                                                                                                                                                 | Small friend group, no passwords stored by us. Yahoo linking is a separate OAuth "connection", not the app login.                                                                                                                               | Auth.js: now maintained by the Better Auth team. Clerk: hosted, good, but external dependency for user data.            |
 | D9  | Providers in v1      | Sleeper (username, public API) and Yahoo (OAuth 2.0, read-only scope)                                                                                                                                                                 | User's leagues are on these. Each sits behind one `FantasyProvider` interface (§5).                                                                                                                                                             | ESPN later: needs `espn_s2`/`SWID` cookies for private leagues.                                                         |
 | D10 | Player values        | Our own value model in `analysis`: points-per-game / rest-of-season projection → value over replacement (VORP) using **each league's** roster and scoring settings. Optional external market values behind a `ValueSource` interface. | Owning the model avoids licensing problems and adapts to custom scoring. External sources (e.g. FantasyCalc) only after checking their terms. Never scrape sites without an API (e.g. KeepTradeCut).                                            | Only external values: easy but generic, and ToS risk.                                                                   |
@@ -68,6 +68,11 @@ Dependabot `ignore` with the reason):
 - `minimatch` is overridden to 11.0.8 (`pnpm.overrides`) to clear
   GHSA-g3hv-75wg-m249 in a lint-only dependency path. Drop the override when
   upstream moves.
+- `esbuild` below 0.25 is overridden to 0.25.12 to clear GHSA-67mh-4wv8-2f99
+  (dev-server request issue) in drizzle-kit's old `@esbuild-kit` loader,
+  which is development-only and never runs esbuild's server. Verified
+  `drizzle-kit generate` still reads the schema. Drop it when drizzle-kit
+  stops depending on `@esbuild-kit`.
 
 ## 3. Architecture
 
@@ -352,6 +357,47 @@ record and rank.
   know what a browser has seen), focuses its button, and closes on Escape.
   Durations come from `timings.ts`.
 
+### 6.1 Accounts (M3a)
+
+Decided 2026-11-11: Google sign-in only, invite-only; Neon added through
+Vercel's Storage integration; production stays on
+`ff-command-center-random-4df1.vercel.app` (no custom domain yet). Yahoo
+moves to M3b.
+
+- **Sign-in:** Better Auth with the Google provider and the Drizzle adapter.
+  Sessions are `HttpOnly`, `Secure` (in production), `SameSite=Lax`
+  cookies. Better Auth telemetry is off. Google tokens aren't needed after
+  sign-in; Better Auth's OAuth-token encryption is on so the `account` table
+  never holds them in plaintext.
+- **Invite-only:** a user can only be created when their Google email is in
+  `invite` or equals `OWNER_EMAIL`; enforced in Better Auth's
+  `user.create.before` hook, so no code path can skip it. The owner manages
+  invites on `/invites` (owner-only, server-checked).
+- **Every page needs a session** except `/sign-in`, `/api/auth/*` and
+  `/api/health`. `proxy.ts` redirects requests without a session cookie
+  (a fast, optimistic check); each page and server action then validates the
+  session for real (`requireUser()`), because a cookie's presence proves
+  nothing. With app sign-in in place, Vercel Authentication can be turned off
+  for production so friends can reach the site.
+- **Linked accounts:** on `/settings` a user links a Sleeper username
+  (validated against Sleeper before saving). Home then opens their matchups.
+  The `/sleeper/<username>` pages stay, behind sign-in.
+- **Celebration "seen"** moves from localStorage to `celebration_seen`,
+  written by a server action when the banner is dismissed; the server only
+  sends unseen wins.
+- **Database access:** `packages/db` owns the Drizzle schema, migrations
+  and repository functions. Production uses Neon's HTTP driver; local
+  development and tests use PGlite (Postgres compiled to WebAssembly,
+  in-process, no Docker), with local data under `.data/` (gitignored).
+- **Migrations** are generated by drizzle-kit and committed. Vercel applies
+  them in its build step (`packages/db` migrate script before
+  `next build`), using the `DATABASE_URL` Vercel injects. Neon's
+  integration gives each preview deploy its own database branch, so previews
+  never migrate production. This replaces the planned `db-migrate.yml`
+  GitHub workflow, so **no database secret is ever stored in GitHub**. On
+  Vercel the build fails if `DATABASE_URL` is missing; CI builds without a
+  database and skip migrating.
+
 ## 7. Data model (Postgres)
 
 | Table                                        | Purpose                                                                                              | Sensitive?        |
@@ -365,7 +411,10 @@ record and rank.
 | `celebration_seen`                           | (`user_id`, `league_ref`, `week`)                                                                    | none              |
 
 Migrations are generated by drizzle-kit, committed and reviewed, and applied
-by a CI/CD step (never by the app at runtime).
+by Vercel's build step before `next build` (never by the app at runtime;
+see §6.1). M3a creates the Better Auth tables, `invite`,
+`linked_account` and `celebration_seen`; `provider_token` arrives with
+Yahoo in M3b.
 
 ## 8. Threat model
 
@@ -384,19 +433,22 @@ cleanliness (public-ready at all times).
 
 **Risks and controls**
 
-| #   | Risk                                                                    | Control                                                                                                                                                                                                                                                                          |
-| --- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Secrets or personal data committed to GitHub                            | Only `.env.example` with placeholder names is tracked; `.env*` gitignored; gitleaks in CI on every push and a scheduled full-history run; GitHub push protection; noreply commit email; fixtures scrubbed by a script and a test that fails on emails, tokens or real usernames. |
-| R2  | Yahoo tokens stolen from DB                                             | Tokens encrypted (AES-256-GCM, key only in Vercel env, key id for rotation); read-only `fspt-r` scope; DB role without DDL rights for the app; tokens never logged or sent to the browser.                                                                                       |
-| R3  | XSS via league/team names from providers                                | React escaping only; `dangerouslySetInnerHTML` banned by lint; strict CSP with nonces; Zod caps string lengths; images only from allowlisted provider hosts (`next.config` `images.remotePatterns`).                                                                             |
-| R4  | SSRF / path injection via username or league ID                         | Inputs parsed to strict formats (Sleeper username charset and length, numeric IDs, Yahoo keys by regex); URLs built from fixed base URLs in `config` with `encodeURIComponent`; no user-supplied hosts ever.                                                                     |
-| R5  | Our server gets rate-limited or banned by a provider; abuse of our API  | Shared server cache (§3.2); per-user rate limit on route handlers; only signed-in, invited users; outbound concurrency cap per provider.                                                                                                                                         |
-| R6  | OAuth CSRF, code interception, open redirect                            | `state` + PKCE; fixed registered redirect URIs; post-login redirect only to same-origin relative paths.                                                                                                                                                                          |
-| R7  | Session theft                                                           | `HttpOnly`, `Secure`, `SameSite=Lax` cookies; short sessions with rotation; CSP; no tokens in `localStorage`.                                                                                                                                                                    |
-| R8  | Malformed or changed provider responses crash pages or corrupt analysis | Zod parse at the adapter; invalid → typed `ProviderError`, page shows "provider unavailable" for that league only; property tests "mapper never throws on any JSON".                                                                                                             |
-| R9  | Supply-chain compromise                                                 | Lockfile with `--frozen-lockfile`; Dependabot grouped weekly; `pnpm audit` + OSV-Scanner in CI; minimal dependencies, each justified; actions pinned to SHA.                                                                                                                     |
-| R10 | Over-privileged CI                                                      | Workflows `permissions: contents: read` by default; CI holds **no** production secrets (Vercel deploys through its own GitHub app); no `pull_request_target`.                                                                                                                    |
-| R11 | Provider terms of service                                               | Personal, non-commercial use; read-only; attribution; respect stated rate limits; no scraping of sites without APIs. Re-check before opening to the public.                                                                                                                      |
+| #   | Risk                                                                        | Control                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1  | Secrets or personal data committed to GitHub                                | Only `.env.example` with placeholder names is tracked; `.env*` gitignored; gitleaks in CI on every push and a scheduled full-history run; GitHub push protection; noreply commit email; fixtures scrubbed by a script and a test that fails on emails, tokens or real usernames.                                                                                                                             |
+| R2  | Yahoo tokens stolen from DB                                                 | Tokens encrypted (AES-256-GCM, key only in Vercel env, key id for rotation); read-only `fspt-r` scope; DB role without DDL rights for the app; tokens never logged or sent to the browser.                                                                                                                                                                                                                   |
+| R3  | XSS via league/team names from providers                                    | React escaping only; `dangerouslySetInnerHTML` banned by lint; strict CSP with nonces; Zod caps string lengths; images only from allowlisted provider hosts (`next.config` `images.remotePatterns`).                                                                                                                                                                                                         |
+| R4  | SSRF / path injection via username or league ID                             | Inputs parsed to strict formats (Sleeper username charset and length, numeric IDs, Yahoo keys by regex); URLs built from fixed base URLs in `config` with `encodeURIComponent`; no user-supplied hosts ever.                                                                                                                                                                                                 |
+| R5  | Our server gets rate-limited or banned by a provider; abuse of our API      | Shared server cache (§3.2); per-user rate limit on route handlers; only signed-in, invited users; outbound concurrency cap per provider.                                                                                                                                                                                                                                                                     |
+| R6  | OAuth CSRF, code interception, open redirect                                | `state` + PKCE; fixed registered redirect URIs; post-login redirect only to same-origin relative paths.                                                                                                                                                                                                                                                                                                      |
+| R7  | Session theft                                                               | `HttpOnly`, `Secure`, `SameSite=Lax` cookies; short sessions with rotation; CSP; no tokens in `localStorage`.                                                                                                                                                                                                                                                                                                |
+| R8  | Malformed or changed provider responses crash pages or corrupt analysis     | Zod parse at the adapter; invalid → typed `ProviderError`, page shows "provider unavailable" for that league only; property tests "mapper never throws on any JSON".                                                                                                                                                                                                                                         |
+| R9  | Supply-chain compromise                                                     | Lockfile with `--frozen-lockfile`; Dependabot grouped weekly; `pnpm audit` + OSV-Scanner in CI; minimal dependencies, each justified; actions pinned to SHA.                                                                                                                                                                                                                                                 |
+| R10 | Over-privileged CI                                                          | Workflows `permissions: contents: read` by default; CI holds **no** production secrets (Vercel deploys through its own GitHub app); no `pull_request_target`.                                                                                                                                                                                                                                                |
+| R11 | Provider terms of service                                                   | Personal, non-commercial use; read-only; attribution; respect stated rate limits; no scraping of sites without APIs. Re-check before opening to the public.                                                                                                                                                                                                                                                  |
+| R12 | Someone uninvited creates an account                                        | Invite check inside Better Auth's user-create hook (every creation path runs it); integration test proves a stranger is refused; owner-only invite management re-checks the owner on every action.                                                                                                                                                                                                           |
+| R13 | Server actions are public endpoints (every export of a `'use server'` file) | Each action calls `requireUser`/`requireOwner` itself and parses its input (Zod, capped lists); reads live in non-action modules; a repo test fails if an exported action skips the session check or a page skips `requireUser`. Next.js checks the Origin of every action.                                                                                                                                  |
+| R14 | Session forgery or theft                                                    | Better Auth sessions stored server-side and looked up on every page (a cookie's presence only drives the proxy redirect); `HttpOnly`/`SameSite=Lax` cookies, `Secure` on https; Better Auth rejects cross-origin requests that carry cookies (403 verified); `callbackURL` to another site refused (403 verified). Cross-origin requests _without_ cookies can start a Google sign-in, which grants nothing. |
 
 **Controls → files** table is added as the code lands (§13).
 
@@ -409,19 +461,19 @@ cleanliness (public-ready at all times).
 - Local: `.env.local` (gitignored). Production/preview: Vercel project env
   settings. Neon gives separate branches/databases for preview vs production.
 - Secrets list: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`/
-  `SECRET`, `YAHOO_CLIENT_ID`/`SECRET`, `TOKEN_ENCRYPTION_KEY`,
-  `CRON_SECRET`. Non-secret config (base URLs, TTLs, limits) is in code
+  `SECRET`, `YAHOO_CLIENT_ID`/`SECRET` (M3b), `TOKEN_ENCRYPTION_KEY` (M3b),
+  `CRON_SECRET`. `OWNER_EMAIL` and `BETTER_AUTH_URL` are config, not
+  secrets, but still live in env because they differ per deployment. Non-secret config (base URLs, TTLs, limits) is in code
   constants, not env.
 
 ## 10. CI/CD
 
-| Workflow         | Triggers                                                 | Jobs                                                                                                                                                        |
-| ---------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`         | push to `main`, PRs, weekly, manual                      | install (frozen lockfile, pnpm cache) → lint (warnings = errors) → typecheck → unit/property/contract tests → build → `pnpm audit` + OSV-Scanner → gitleaks |
-| `codeql.yml`     | push, PR, weekly                                         | CodeQL `javascript-typescript`                                                                                                                              |
-| `e2e.yml`        | on Vercel preview `deployment_status` success            | Playwright against the preview URL, signed in as a seeded test user on the preview database                                                                 |
-| `db-migrate.yml` | push to `main` touching `packages/db/migrations`, manual | applies migrations to production; the only job with a DB secret, in a protected GitHub **environment** with required approval                               |
-| Dependabot       | weekly                                                   | npm (grouped: next/react, eslint, testing, drizzle) and github-actions                                                                                      |
+| Workflow     | Triggers                                      | Jobs                                                                                                                                                        |
+| ------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`     | push to `main`, PRs, weekly, manual           | install (frozen lockfile, pnpm cache) → lint (warnings = errors) → typecheck → unit/property/contract tests → build → `pnpm audit` + OSV-Scanner → gitleaks |
+| `codeql.yml` | push, PR, weekly                              | CodeQL `javascript-typescript`                                                                                                                              |
+| `e2e.yml`    | on Vercel preview `deployment_status` success | Playwright against the preview URL, signed in as a seeded test user on the preview database                                                                 |
+| Dependabot   | weekly                                        | npm (grouped: next/react, eslint, testing, drizzle) and github-actions                                                                                      |
 
 - Deploys: Vercel GitHub app builds a preview for every PR and production on
   merge to `main`. No Vercel token in GitHub.
@@ -457,16 +509,17 @@ CSV.
 
 Each milestone is a deployable vertical slice with CI green.
 
-| M   | Slice                  | Done when                                                                                                                                                                                                 |
-| --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Done 2026-11-11** (see M0 log).                              |
-| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL). **Done 2026-11-11** (see M1 log).                                            |
-| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3). **Done 2026-11-11** (see M2 log).                                               |
-| M3  | Accounts + Yahoo       | Better Auth invite-only sign-in; Postgres; saved linked accounts; Yahoo OAuth connect, Yahoo leagues/matchups through the same UI; provider contract suite passes for both; celebration-seen moves to DB. |
-| M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                                                      |
-| M5  | Trade calculator       | Two-sided picker, lineup-aware evaluation, fairness verdict.                                                                                                                                              |
-| M6  | Trade recommendations  | Ranked mutually beneficial suggestions per opponent.                                                                                                                                                      |
-| M7  | Basketball             | `nba` in the sport registry, category scoring in matchups and analysis, Sleeper + Yahoo NBA mappings.                                                                                                     |
+| M   | Slice                  | Done when                                                                                                                                                                    |
+| --- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Done 2026-11-11** (see M0 log). |
+| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL). **Done 2026-11-11** (see M1 log).               |
+| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3). **Done 2026-11-11** (see M2 log).                  |
+| M3a | Accounts               | Google sign-in, invite-only; Postgres (Neon / PGlite); saved Sleeper username; celebration "seen" in the database.                                                           |
+| M3b | Yahoo                  | Yahoo OAuth connect (encrypted tokens), Yahoo leagues and matchups through the same UI; provider contract suite passes for both.                                             |
+| M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                         |
+| M5  | Trade calculator       | Two-sided picker, lineup-aware evaluation, fairness verdict.                                                                                                                 |
+| M6  | Trade recommendations  | Ranked mutually beneficial suggestions per opponent.                                                                                                                         |
+| M7  | Basketball             | `nba` in the sport registry, category scoring in matchups and analysis, Sleeper + Yahoo NBA mappings.                                                                        |
 
 ### M0 log (2026-11-11)
 
@@ -561,6 +614,30 @@ with Replay. New package `@ffc/ui` holds the celebration.
 - Found while testing: Sleeper's current week begins before kickoff, so the
   live state is labelled "This week" rather than "Live".
 
+### M3a log (2026-11-11)
+
+Built: Google sign-in (invite-only), owner invite management, sign-in
+required on every page, linked Sleeper account in Settings (home then opens
+your matchups), and celebration "seen" stored per user in Postgres. New
+package `@ffc/db` (Drizzle schema, first migration, repositories, migrate
+script); `@ffc/db/testing` gives tests an in-memory Postgres.
+
+- Verified: 227 tests. New: repositories against real Postgres (PGlite),
+  including cascading deletes; Better Auth integration (owner allowed,
+  stranger refused, invited email allowed case-insensitively, sessions
+  round-trip through our tables), checked against a build with the invite
+  gate removed; access-boundary repo tests (pages and actions), each checked
+  against broken code. Local production build smoke test: every page
+  redirects to sign-in without a session, a forged session cookie is
+  rejected by the page check, Better Auth starts Google sign-in with state +
+  PKCE (S256) and only `openid email profile`, rejects an off-site
+  callbackURL and cross-origin cookie requests; migrate script skips in CI,
+  fails on Vercel without DATABASE_URL, migrates PGlite locally.
+- Not verified yet: a real Google sign-in (needs your OAuth client) and the
+  first Neon migration on Vercel.
+- Better Auth is pinned to 1.7.18 (a week older than the latest) as a
+  supply-chain buffer; Dependabot will offer updates.
+
 ## 13. Security controls → files
 
 | Control                                                        | File                                                                                                                    |
@@ -574,6 +651,11 @@ with Replay. New package `@ffc/ui` holds the celebration.
 | R4 safe provider id charset                                    | `packages/domain/src/league-ref.ts`                                                                                     |
 | R4 URL input parsed before use (username, season, league)      | `apps/web/src/routes.ts`, `packages/providers/src/sleeper/raw.ts`                                                       |
 | R6 search redirect only to same-origin relative paths          | `apps/web/src/app/sleeper/route.ts`                                                                                     |
+| R12 invite gate on every user creation                         | `apps/web/src/features/auth/auth.ts` (user.create hook), `packages/db/src/repos/invites.ts`                             |
+| R13/R14 session checks on pages and actions; access repo test  | `apps/web/src/features/auth/session.ts`, `tooling/repo-checks/src/access.test.ts`                                       |
+| R13 action input parsing                                       | `apps/web/src/features/matchups/actions.ts`, `accounts/actions.ts`, `invites/actions.ts`                                |
+| R14 optimistic redirect without a session cookie               | `apps/web/src/proxy.ts`                                                                                                 |
+| R2 OAuth tokens encrypted at rest, telemetry off               | `apps/web/src/features/auth/auth.ts`                                                                                    |
 | R5 per-provider request cap                                    | `packages/providers/src/http.ts` (`withConcurrencyLimit`), `apps/web/src/features/provider-access/provider-registry.ts` |
 | R3 celebration: no SSR styles, no blob: worker, reduced motion | `packages/ui/src/celebration/celebration.tsx`                                                                           |
 | R5/R8 timeout, size cap, no redirects, typed errors            | `packages/providers/src/http.ts`, `packages/config/src/providers.ts`                                                    |
@@ -592,7 +674,10 @@ which picks up the pinned version from `packageManager`.
 
 ```bash
 pnpm install --frozen-lockfile   # install from lockfile
-pnpm dev                         # Next.js dev server on http://localhost:3000
+cp .env.example apps/web/.env.local   # then fill in Google client + OWNER_EMAIL
+pnpm dev                         # migrates local PGlite, then Next.js on http://localhost:3000
+pnpm db:migrate                  # apply migrations (PGlite locally, Neon if DATABASE_URL set)
+pnpm db:generate                 # new migration after a schema change (commit it)
 pnpm --filter @ffc/web dev:https # local HTTPS, needed for Yahoo OAuth (M3)
 pnpm format                      # Prettier write
 pnpm lint                        # ESLint, warnings fail
@@ -602,8 +687,11 @@ pnpm build                       # production build of the app
 pnpm check                       # everything CI's main job runs, in order
 ```
 
-Added in later milestones: `pnpm test:e2e` (Playwright), `pnpm db:generate`
-and `pnpm db:migrate` (drizzle-kit), `pnpm fixtures:scrub`.
+Added in later milestones: `pnpm test:e2e` (Playwright), `pnpm fixtures:scrub`.
+
+Local sign-in needs a Google OAuth client whose redirect URIs include
+`http://localhost:3000/api/auth/callback/google`, and `OWNER_EMAIL` set
+to your Google address. Delete `.data/` to reset the local database.
 
 Commit identity: this repo uses the GitHub no-reply email (set with
 `git config user.email` in this repo only). On GitHub, also enable "Keep my
@@ -614,8 +702,6 @@ email addresses private" and "Block command line pushes that expose my email".
 1. Value source for the trade engine beyond our own VORP: check FantasyCalc
    (or similar) terms before using it. Is dynasty support (rookie picks)
    needed in v1?
-2. Domain name for production (needed for the Yahoo redirect URI and a stable
-   preview domain).
-3. Sign-in method for friends: Google, email magic link, or both? (Magic
-   links need an email sender such as Resend, with one more secret.)
+2. ~~Domain name~~ Decided: keep the vercel.app URL for now (§6.1).
+3. ~~Sign-in method~~ Decided: Google only, invite-only (§6.1).
 4. Licence for the repo if it goes public (MIT vs all rights reserved).

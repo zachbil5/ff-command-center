@@ -2,3 +2,4 @@
 export { loadLeagueWeek, type LeagueWeekView } from './league-week';
 export { loadMyMatchups, type MyLeagueWeek, type MyMatchups, type MyWin } from './my-matchups';
 export type { LeagueWeek, ResolvedMatchup, ResolvedSide } from './resolve-week';
+export { celebrationsFor, type CelebrationWin, type Celebrations } from './celebrations';

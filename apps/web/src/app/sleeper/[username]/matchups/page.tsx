@@ -6,14 +6,16 @@ import { notFound } from 'next/navigation';
 import { CACHE_TTL_SECONDS } from '@ffc/config';
 import { getSport, leagueRefKey } from '@ffc/domain';
 import { avatarUrl } from '@ffc/providers';
-import type { WinSummary } from '@ffc/ui';
 import { LiveRefresh } from '@/components/live-refresh';
 import { MyMatchupCard } from '@/components/my-matchup-card';
 import { Notice } from '@/components/notice';
 import { PageShell } from '@/components/page-shell';
 import { WeekNav } from '@/components/week-nav';
 import { WinCelebration } from '@/components/win-celebration';
-import { loadMyMatchups } from '@/features/matchups';
+import { linkedSleeper } from '@/features/accounts';
+import { requireUser } from '@/features/auth';
+import { celebrationsFor, loadMyMatchups } from '@/features/matchups';
+import { markCelebratedAction } from '@/features/matchups/actions';
 import { parseSleeperUsername, parseWeek, routes } from '@/routes';
 
 export const metadata: Metadata = { title: 'My matchups · Fantasy Football Center' };
@@ -25,6 +27,7 @@ export default async function MyMatchupsPage({
   params: Promise<{ username: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const user = await requireUser();
   const username = parseSleeperUsername(decodeURIComponent((await params).username));
   if (username === null) notFound();
   const week = parseWeek((await searchParams).week, 'nfl');
@@ -33,7 +36,7 @@ export default async function MyMatchupsPage({
 
   if (result.kind === 'unavailable') {
     return (
-      <PageShell>
+      <PageShell user={user}>
         <Notice
           title="Sleeper isn’t answering right now"
           action={{ href: routes.myMatchups(username, week ?? undefined), label: 'Try again' }}
@@ -44,22 +47,25 @@ export default async function MyMatchupsPage({
     );
   }
 
-  const wins: WinSummary[] = result.wins.map((win) => ({
-    key: win.key,
-    leagueName: win.league.name,
-    week: win.week,
-    myPoints: win.myPoints,
-    opponentPoints: win.opponentPoints,
-    opponentName: win.opponentName,
-  }));
+  // Celebrate only on the signed-in user's own linked account, never a friend's username.
+  const linked = await linkedSleeper(user.id);
+  const celebrations = await celebrationsFor(
+    user.id,
+    result.wins,
+    linked?.externalUserId === result.user.userId,
+  );
   const replayKeyFor = (leagueKey: string) =>
-    result.wins.find((w) => leagueRefKey(w.league.ref) === leagueKey && w.week === result.week)
-      ?.key ?? null;
+    celebrations.replayable.find((w) => w.leagueKey === leagueKey && w.week === result.week)?.key ??
+    null;
   const anyLive = result.leagues.some((l) => l.kind === 'matchup' && l.status === 'live');
 
   return (
-    <PageShell>
-      <WinCelebration wins={wins} />
+    <PageShell user={user}>
+      <WinCelebration
+        unseen={celebrations.unseen}
+        replayable={celebrations.replayable}
+        markSeen={markCelebratedAction}
+      />
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">

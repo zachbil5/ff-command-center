@@ -6,6 +6,7 @@ import { avatarUrl } from '@ffc/providers';
 import { LeagueList } from '@/components/league-list';
 import { Notice } from '@/components/notice';
 import { PageShell } from '@/components/page-shell';
+import { requireUser } from '@/features/auth';
 import { UsernameForm } from '@/components/username-form';
 import { loadSleeperLeagues } from '@/features/leagues';
 import { parseSeason, parseSleeperUsername, routes } from '@/routes';
@@ -19,13 +20,14 @@ export default async function SleeperUserPage({
   params: Promise<{ username: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const user = await requireUser();
   const username = parseSleeperUsername(decodeURIComponent((await params).username));
   if (username === null) notFound();
   const season = parseSeason((await searchParams).season);
   const result = await loadSleeperLeagues(username, season);
 
   return (
-    <PageShell>
+    <PageShell user={user}>
       <UsernameForm action={routes.sleeperSearch} defaultValue={username} />
       {result.kind === 'not_found' ? (
         <Notice title={`No Sleeper user called “${username}”`}>
