@@ -8,11 +8,12 @@ export {
 } from './errors';
 export {
   createFetchHttpGetJson,
+  withConcurrencyLimit,
   type FetchHttpDeps,
   type HttpGetJson,
   type HttpRequestOptions,
 } from './http';
-export type { FantasyProvider, PartialList, UsernameLookup } from './provider';
+export type { FantasyProvider, Freshness, PartialList, UsernameLookup } from './provider';
 export { providerUrl, UnsafePathSegmentError } from './provider-url';
 export { createSleeperProvider } from './sleeper/adapter';
 export { SleeperUsernameSchema } from './sleeper/raw';

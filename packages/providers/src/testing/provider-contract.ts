@@ -9,9 +9,17 @@ export interface ContractCase {
   readonly provider: () => FantasyProvider;
   readonly user: ProviderUser;
   readonly season: number;
+  /** Weeks the fixtures cover; the first league is checked for each. */
+  readonly matchupWeeks: readonly number[];
 }
 
-export function describeProviderContract({ name, provider, user, season }: ContractCase): void {
+export function describeProviderContract({
+  name,
+  provider,
+  user,
+  season,
+  matchupWeeks,
+}: ContractCase): void {
   describe(`${name} satisfies the provider contract`, () => {
     it('declares only known sports', () => {
       for (const sport of provider().sports) expect(SPORT_IDS).toContain(sport);
@@ -46,6 +54,23 @@ export function describeProviderContract({ name, provider, user, season }: Contr
       const p = provider();
       const first = await firstLeague(p);
       expect((await p.getLeague(first.ref)).ref).toEqual(first.ref);
+    });
+
+    it('pairs each team at most once per week, only with teams in the league', async () => {
+      const p = provider();
+      const { ref } = await firstLeague(p);
+      const teamIds = new Set((await p.getTeams(ref)).map((t) => t.teamId));
+      for (const week of matchupWeeks) {
+        const { items } = await p.getMatchups(ref, week, 'idle');
+        const playing = items.flatMap((m) => [m.home.teamId, ...(m.away ? [m.away.teamId] : [])]);
+        expect(new Set(playing).size).toBe(playing.length);
+        for (const id of playing) expect(teamIds.has(id)).toBe(true);
+        for (const m of items) {
+          expect(m.week).toBe(week);
+          expect(m.away?.teamId).not.toBe(m.home.teamId);
+          expect(Number.isFinite(m.home.points)).toBe(true);
+        }
+      }
     });
 
     it('returns teams with unique ids and sane records', async () => {

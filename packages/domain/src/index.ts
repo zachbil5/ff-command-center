@@ -20,6 +20,7 @@ export {
   type Team,
   type TeamRecord,
 } from './league';
+export { MATCHUP_STATUSES, type Matchup, type MatchupSide, type MatchupStatus } from './matchup';
 export {
   ExternalIdSchema,
   SeasonSchema,

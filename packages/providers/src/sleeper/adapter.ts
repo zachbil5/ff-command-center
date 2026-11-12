@@ -2,17 +2,18 @@
 // injected HttpGetJson, validates with raw.ts, maps with map.ts. Does not own caching policy
 // values (config) or how HTTP is performed (http.ts).
 import { CACHE_TTL_SECONDS } from '@ffc/config';
-import type { League, LeagueRef, ProviderUser, Sport } from '@ffc/domain';
+import { getSport, type League, type LeagueRef, type ProviderUser, type Sport } from '@ffc/domain';
 import { z } from 'zod';
 import { ProviderDataError, ProviderNotFoundError } from '../errors';
 import type { HttpGetJson } from '../http';
-import type { FantasyProvider, PartialList, UsernameLookup } from '../provider';
+import type { FantasyProvider, Freshness, PartialList, UsernameLookup } from '../provider';
 import { providerUrl } from '../provider-url';
-import { mapLeague, mapTeams, mapUser } from './map';
+import { mapLeague, mapMatchups, mapTeams, mapUser } from './map';
 import {
   SLEEPER_LIST_LIMITS,
   SleeperLeagueSchema,
   SleeperLeagueUserSchema,
+  SleeperMatchupSchema,
   SleeperRosterSchema,
   SleeperStateSchema,
   SleeperUserSchema,
@@ -118,6 +119,25 @@ export function createSleeperProvider(get: HttpGetJson): FantasyProvider & Usern
         strictList(SleeperRosterSchema, rosters, SLEEPER_LIST_LIMITS.rosters, 'rosters'),
         strictList(SleeperLeagueUserSchema, users, SLEEPER_LIST_LIMITS.leagueUsers, 'users'),
       );
+    },
+
+    async getMatchups(ref, week, freshness: Freshness) {
+      if (ref.provider !== PROVIDER) throw new ProviderNotFoundError(PROVIDER, 'league');
+      if (!Number.isInteger(week) || week < 1 || week > getSport(ref.sport).maxWeek) {
+        throw new ProviderNotFoundError(PROVIDER, 'week');
+      }
+      const data = await get(providerUrl(PROVIDER, ['league', ref.leagueId, 'matchups', week]), {
+        ttlSeconds:
+          freshness === 'live' ? CACHE_TTL_SECONDS.matchupsLive : CACHE_TTL_SECONDS.matchupsIdle,
+      });
+      // Sleeper returns an empty list (or null) for weeks with no games yet.
+      const raws = strictList(
+        SleeperMatchupSchema,
+        data ?? [],
+        SLEEPER_LIST_LIMITS.matchups,
+        'matchups',
+      );
+      return mapMatchups(raws, week);
     },
   };
 }

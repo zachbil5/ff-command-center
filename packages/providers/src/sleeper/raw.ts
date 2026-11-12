@@ -65,6 +65,29 @@ export const SleeperLeagueSchema = z.object({
   status: z.enum(SLEEPER_LEAGUE_STATUSES),
   total_rosters: z.number().int().min(1).max(64),
   avatar: avatarId,
+  /**
+   * `leg` is the week the league is on; `last_scored_leg` the latest week Sleeper has
+   * finished scoring. Missing before the season; out-of-range values fall back to unknown.
+   */
+  settings: z
+    .object({
+      leg: z.number().int().min(0).max(30).nullable().optional().catch(null),
+      last_scored_leg: z.number().int().min(0).max(30).nullable().optional().catch(null),
+    })
+    .nullable()
+    .optional(),
+});
+
+/** Points can be negative (defence, kickers) and are decimals; cap to a sane range. */
+const weeklyPoints = z.number().min(-1000).max(1000);
+
+export const SleeperMatchupSchema = z.object({
+  roster_id: z.number().int().min(1).max(64),
+  /** Shared by the two rosters that play each other; null on a bye. */
+  matchup_id: z.number().int().min(1).max(64).nullable().optional(),
+  points: weeklyPoints.nullable().optional(),
+  /** A commissioner's override of `points`, when set. */
+  custom_points: weeklyPoints.nullable().optional(),
 });
 
 export const SleeperRosterSchema = z.object({
@@ -92,9 +115,15 @@ export const SleeperLeagueUserSchema = z.object({
 });
 
 /** Upper bounds on list sizes we will accept from Sleeper. */
-export const SLEEPER_LIST_LIMITS = { leagues: 300, rosters: 64, leagueUsers: 200 } as const;
+export const SLEEPER_LIST_LIMITS = {
+  leagues: 300,
+  rosters: 64,
+  leagueUsers: 200,
+  matchups: 64,
+} as const;
 
 export type SleeperUser = z.infer<typeof SleeperUserSchema>;
 export type SleeperLeague = z.infer<typeof SleeperLeagueSchema>;
 export type SleeperRoster = z.infer<typeof SleeperRosterSchema>;
 export type SleeperLeagueUser = z.infer<typeof SleeperLeagueUserSchema>;
+export type SleeperMatchup = z.infer<typeof SleeperMatchupSchema>;

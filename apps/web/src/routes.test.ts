@@ -1,11 +1,18 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { parseLeagueParams, parseMe, parseSeason, parseSleeperUsername, routes } from './routes';
+import {
+  parseLeagueParams,
+  parseMe,
+  parseSeason,
+  parseSleeperUsername,
+  parseWeek,
+  routes,
+} from './routes';
 
 describe('routes', () => {
   it('builds league URLs that parse back to the same ref', () => {
     const ref = { provider: 'sleeper', sport: 'nfl', season: 2026, leagueId: '9001' } as const;
-    const url = new URL(routes.league(ref, '42'), 'https://x.test');
+    const url = new URL(routes.league(ref, { me: '42' }), 'https://x.test');
     const [, , provider, sport, season, leagueId] = url.pathname.split('/');
     expect(
       parseLeagueParams({
@@ -64,5 +71,23 @@ describe('URL input parsing', () => {
     expect(parseMe('100')).toBe('100');
     expect(parseMe('a b')).toBeNull();
     expect(parseMe(undefined)).toBeNull();
+  });
+});
+
+describe('week routes', () => {
+  it('adds the week only when given', () => {
+    expect(routes.myMatchups('a_b')).toBe('/sleeper/a_b/matchups');
+    expect(routes.myMatchups('a_b', 9)).toBe('/sleeper/a_b/matchups?week=9');
+    const ref = { provider: 'sleeper', sport: 'nfl', season: 2026, leagueId: '1' } as const;
+    expect(routes.league(ref, { me: '7', week: 3 })).toBe(
+      '/leagues/sleeper/nfl/2026/1?me=7&week=3',
+    );
+  });
+
+  it('parses only weeks valid for the sport', () => {
+    expect(parseWeek('9', 'nfl')).toBe(9);
+    for (const bad of [undefined, '0', '19', '9a', '-1', '1.5', ['9'], '009']) {
+      expect(parseWeek(bad, 'nfl')).toBeNull();
+    }
   });
 });

@@ -23,6 +23,10 @@ export interface League {
   readonly teamCount: number;
   readonly scoringKind: ScoringKind;
   readonly avatarId: string | null;
+  /** The week the league is playing now, as the provider reports it; null when unknown. */
+  readonly currentWeek: number | null;
+  /** The latest week the provider has finished scoring; null before any week is scored. */
+  readonly lastScoredWeek: number | null;
 }
 
 export interface TeamRecord {

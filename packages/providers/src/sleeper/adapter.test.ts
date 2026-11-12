@@ -20,6 +20,9 @@ function routes(overrides: Record<string, unknown> = {}) {
     [`/league/${LEAGUE_ID}/rosters`]: responses.rosters,
     [`/league/${LEAGUE_ID}/users`]: responses.leagueUsers,
     [`/league/${LEAGUE_ID}`]: responses.league,
+    [`/league/${LEAGUE_ID}/matchups/9`]: responses.matchupsWeek9,
+    [`/league/${LEAGUE_ID}/matchups/10`]: responses.matchupsWeek10,
+    [`/league/${LEAGUE_ID}/matchups/11`]: [],
     ...overrides,
   };
 }
@@ -40,6 +43,7 @@ describeProviderContract({
     avatarId: null,
   },
   season: 2026,
+  matchupWeeks: [9, 10, 11],
 });
 
 describe('Sleeper adapter', () => {
@@ -157,5 +161,49 @@ describe('Sleeper adapter', () => {
       }),
       { numRuns: 200 },
     );
+  });
+});
+
+describe('Sleeper matchups', () => {
+  it('reads the league week markers', async () => {
+    expect(await sleeper().provider.getLeague(ref)).toMatchObject({
+      currentWeek: 10,
+      lastScoredWeek: 9,
+    });
+  });
+
+  it('pairs a week and applies commissioner overrides', async () => {
+    const { items, skipped } = await sleeper().provider.getMatchups(ref, 9, 'idle');
+    expect(skipped).toBe(0);
+    expect(
+      items.map((m) => [m.home.teamId, m.home.points, m.away?.teamId, m.away?.points]),
+    ).toEqual([
+      ['1', 121.34, '2', 99.5],
+      ['3', 102, '4', 95.25],
+    ]);
+  });
+
+  it('returns an empty week for weeks without games', async () => {
+    expect((await sleeper().provider.getMatchups(ref, 11, 'idle')).items).toEqual([]);
+  });
+
+  it('caches live weeks briefly and finished weeks longer', async () => {
+    const { provider, calls } = sleeper();
+    await provider.getMatchups(ref, 10, 'live');
+    await provider.getMatchups(ref, 9, 'idle');
+    expect(calls.find((c) => c.path.endsWith('/matchups/10'))?.ttlSeconds).toBe(
+      CACHE_TTL_SECONDS.matchupsLive,
+    );
+    expect(calls.find((c) => c.path.endsWith('/matchups/9'))?.ttlSeconds).toBe(
+      CACHE_TTL_SECONDS.matchupsIdle,
+    );
+  });
+
+  it.each([0, 19, 1.5, -1])('rejects week %s without a request', async (week) => {
+    const { provider, calls } = sleeper();
+    await expect(provider.getMatchups(ref, week, 'idle')).rejects.toBeInstanceOf(
+      ProviderNotFoundError,
+    );
+    expect(calls).toEqual([]);
   });
 });
