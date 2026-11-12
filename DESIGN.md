@@ -403,16 +403,16 @@ CSV.
 
 Each milestone is a deployable vertical slice with CI green.
 
-| M   | Slice                  | Done when                                                                                                                                                                                                    |
-| --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Local part done** (see below); GitHub and Vercel setup pending. |
-| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL/local state).                                                                     |
-| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3).                                                                                    |
-| M3  | Accounts + Yahoo       | Better Auth invite-only sign-in; Postgres; saved linked accounts; Yahoo OAuth connect, Yahoo leagues/matchups through the same UI; provider contract suite passes for both; celebration-seen moves to DB.    |
-| M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                                                         |
-| M5  | Trade calculator       | Two-sided picker, lineup-aware evaluation, fairness verdict.                                                                                                                                                 |
-| M6  | Trade recommendations  | Ranked mutually beneficial suggestions per opponent.                                                                                                                                                         |
-| M7  | Basketball             | `nba` in the sport registry, category scoring in matchups and analysis, Sleeper + Yahoo NBA mappings.                                                                                                        |
+| M   | Slice                  | Done when                                                                                                                                                                                                 |
+| --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0  | Skeleton               | Monorepo, packages with facades, lint boundaries, CI/CodeQL/gitleaks/Dependabot green; "hello" page live on Vercel preview and production. **Done 2026-11-11** (see M0 log).                              |
+| M1  | Sleeper leagues        | Enter Sleeper username → list of NFL leagues for the season → league page with standings. No accounts yet (username in URL/local state).                                                                  |
+| M2  | Matchups + celebration | My matchups across leagues and league-wide view for any week; live polling; win celebration (local "seen" flag until M3).                                                                                 |
+| M3  | Accounts + Yahoo       | Better Auth invite-only sign-in; Postgres; saved linked accounts; Yahoo OAuth connect, Yahoo leagues/matchups through the same UI; provider contract suite passes for both; celebration-seen moves to DB. |
+| M4  | League analysis        | All-play, luck, power rankings, positional strength.                                                                                                                                                      |
+| M5  | Trade calculator       | Two-sided picker, lineup-aware evaluation, fairness verdict.                                                                                                                                              |
+| M6  | Trade recommendations  | Ranked mutually beneficial suggestions per opponent.                                                                                                                                                      |
+| M7  | Basketball             | `nba` in the sport registry, category scoring in matchups and analysis, Sleeper + Yahoo NBA mappings.                                                                                                     |
 
 ### M0 log (2026-11-11)
 
@@ -437,8 +437,21 @@ the CSP nonce, no console or CSP errors).
   "Expected version: >=24 <25, Got: v26.13.0". Vercel's default Node is 26
   and the pin was missing from `apps/web` (see §2). pnpm itself was fine:
   Vercel read `packageManager` and used pnpm 10. Fixed by pinning
-  `engines.node` in the app. Production deploy and header check still
-  pending.
+  `engines.node` in the app (PR #1, `aacc693`); PR preview and production
+  then built.
+- Production (2026-11-11): `ff-command-center-random-4df1.vercel.app`.
+  `ff-command-center.vercel.app` belongs to an unrelated project, so never
+  link it. Checked from a signed-in browser session: page returns 200;
+  CSP has a fresh nonce, `'strict-dynamic'`, no `unsafe-eval` or
+  `unsafe-inline`, `object-src 'none'`, `frame-ancestors 'none'`; 9 of 9
+  scripts carry the nonce; X-Frame-Options, nosniff, HSTS,
+  Referrer-Policy and Permissions-Policy present; no `X-Powered-By`;
+  `/api/health` returns `{"status":"ok"}` with `no-store`; no console
+  errors.
+- Access: Vercel Authentication protects every deployment, including
+  production, so only Vercel team members can open the site. Keep it on
+  until the app's own sign-in lands (M3); then turn it off for production or
+  add a custom domain so friends can reach it (§15 Q2).
 
 ## 13. Security controls → files
 
