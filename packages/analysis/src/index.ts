@@ -5,3 +5,4 @@ export {
   type MatchupStatus,
   type MatchupOutcome,
 } from './matchup-outcome';
+export { standings, winPct, type StandingRow } from './standings';
