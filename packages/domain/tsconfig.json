@@ -1,0 +1,4 @@
+{
+  "extends": "@ffc/tsconfig/base.json",
+  "include": ["src"]
+}

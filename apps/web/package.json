@@ -1,0 +1,31 @@
+{
+  "name": "@ffc/web",
+  "private": true,
+  "description": "Next.js app: route handlers (edge), server features and UI composition (DESIGN §4).",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "dev:https": "next dev --experimental-https",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ffc/analysis": "workspace:*",
+    "@ffc/config": "workspace:*",
+    "@ffc/domain": "workspace:*",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.5",
+    "vitest": "5.1.0"
+  }
+}

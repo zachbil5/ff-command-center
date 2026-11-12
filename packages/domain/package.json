@@ -1,0 +1,21 @@
+{
+  "name": "@ffc/domain",
+  "private": true,
+  "description": "PURE: cross-provider domain types, schemas and the sport registry (DESIGN §5.1). No I/O.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "fast-check": "4.10.2",
+    "vitest": "5.1.0"
+  }
+}

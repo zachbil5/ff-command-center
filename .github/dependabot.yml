@@ -1,0 +1,38 @@
+# Weekly dependency updates, grouped so packages that move together land together (DESIGN §10).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      next-react:
+        patterns: ['next', 'eslint-config-next', 'react', 'react-dom', '@types/react*']
+      lint-format:
+        patterns: ['eslint', '@eslint/*', 'typescript-eslint', 'globals', 'prettier']
+      testing:
+        patterns: ['vitest', 'fast-check']
+      styling:
+        patterns: ['tailwindcss', '@tailwindcss/*']
+    ignore:
+      # eslint-config-next's plugins (react, import, jsx-a11y) only support ESLint 9.
+      # Remove when eslint-config-next supports ESLint 10.
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      # typescript-eslint supports TypeScript < 6.1. Remove when it supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # Node types track the Node major in .nvmrc; bump both together by hand.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

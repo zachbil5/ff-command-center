@@ -1,0 +1,9 @@
+{
+  "name": "@ffc/tsconfig",
+  "private": true,
+  "description": "Shared TypeScript compiler settings for every workspace package.",
+  "files": [
+    "base.json",
+    "react.json"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@ffc/config",
+  "private": true,
+  "description": "Typed env parsing and every app-wide constant: cache policy, limits, provider base URLs (DESIGN §9). Only package that reads process.env.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.7",
+    "@ffc/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "vitest": "5.1.0"
+  }
+}

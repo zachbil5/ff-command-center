@@ -1,0 +1,10 @@
+# Workspace layout (DESIGN §4). Apps compose packages; packages never import apps.
+packages:
+  - apps/*
+  - packages/*
+  - tooling/*
+
+# Only these dependencies may run install scripts (supply-chain control, DESIGN §8 R9).
+onlyBuiltDependencies:
+  - sharp
+  - unrs-resolver

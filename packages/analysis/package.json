@@ -1,0 +1,21 @@
+{
+  "name": "@ffc/analysis",
+  "private": true,
+  "description": "PURE: league analysis and trade engine over domain types (DESIGN §6). No I/O, clock or randomness.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ffc/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "fast-check": "4.10.2",
+    "vitest": "5.1.0"
+  }
+}

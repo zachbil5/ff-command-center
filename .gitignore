@@ -1,0 +1,50 @@
+# Ignore list: build output, caches, local data and anything secret (DESIGN §8 R1, §9).
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output and caches
+.next/
+out/
+dist/
+build/
+.turbo/
+.vercel/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# Env and secrets: only .env.example is tracked
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+certificates/
+
+# Raw (unscrubbed) provider recordings; only scrubbed fixtures are committed
+**/fixtures/raw/
+
+# Local data and logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+*.sqlite
+*.db
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local session/handoff notes (machine-specific)
+HANDOFF.md
+.claude/settings.local.json
+next-env.d.ts

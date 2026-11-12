@@ -1,0 +1,14 @@
+{
+  "name": "@ffc/repo-checks",
+  "private": true,
+  "description": "Repo-wide tests that enforce DESIGN §4 layers and §9 env rules. Ships nothing.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@ffc/tsconfig": "workspace:*",
+    "vitest": "5.1.0"
+  }
+}

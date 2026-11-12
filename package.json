@@ -1,0 +1,37 @@
+{
+  "name": "fantasy-football-center",
+  "private": true,
+  "description": "Command center for every fantasy league you play in. See DESIGN.md.",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@ffc/web",
+    "build": "turbo run build",
+    "lint": "eslint --max-warnings=0 .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@ffc/tsconfig": "workspace:*",
+    "@types/node": "24.19.2",
+    "eslint": "9.39.5",
+    "globals": "17.14.0",
+    "prettier": "3.10.0",
+    "turbo": "2.11.11",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0",
+    "eslint-config-next": "16.4.6"
+  },
+  "pnpm": {
+    "overrides": {
+      "minimatch@>=7 <11.0.1": "11.0.8"
+    }
+  }
+}
